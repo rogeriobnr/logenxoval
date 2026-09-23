@@ -1,7 +1,10 @@
+import { loadDotenv } from './lib/dotenv';
 import { loadEnv } from './env';
 import { buildApp } from './app';
 import { migrate } from './db/migrate';
 import { closePool } from './db/pool';
+
+loadDotenv();
 
 const env = loadEnv();
 const isDev = env.NODE_ENV !== 'production';
