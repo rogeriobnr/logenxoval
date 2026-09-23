@@ -1,0 +1,16 @@
+{
+  "name": "LogEnxoval",
+  "short_name": "LogEnxoval",
+  "description": "Controle, baixa, conferência e auditoria do enxoval de caminhões-oficina.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b3d2e",
+  "theme_color": "#0b3d2e",
+  "orientation": "portrait",
+  "lang": "pt-BR",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

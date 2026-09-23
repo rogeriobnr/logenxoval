@@ -18,7 +18,7 @@
 
 | Fase | Escopo | Commit sug. | Status |
 | ---- | ------ | ----------- | ------ |
-| 01 | Autenticação, usuários e depósitos (servidor + PWA) | `feat(phase01): auth, users e depósitos` | ⏳ |
+| 01 | Autenticação, usuários e depósitos (servidor + PWA) | `feat(phase01): auth, users e depósitos` | ✅ |
 | 02 | Banco local (IndexedDB) e modo offline | `feat(phase02): banco local e modo offline` | ⏳ |
 | 03 | Cadastro e consulta do enxoval | `feat(phase03): enxoval` | ⏳ |
 | 04 | Baixa e Goldbox | `feat(phase04): baixa e goldbox` | ⏳ |
