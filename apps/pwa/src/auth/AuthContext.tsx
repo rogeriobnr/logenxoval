@@ -35,6 +35,7 @@ interface AuthContextValue {
   status: AuthStatus;
   online: boolean;
   session: AuthSession | null;
+  deviceId: string;
   api: ApiClient;
   login: (matricula: string, senha: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
@@ -70,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState<boolean>(() => navigator.onLine);
 
   const deviceIdRef = useRef<string>(generateDeviceId());
+  const [deviceId, setDeviceId] = useState<string>(() => deviceIdRef.current);
   const tokensRef = useRef<ApiTokens | undefined>(undefined);
   const [api, setApi] = useState<ApiClient | null>(null);
 
@@ -123,8 +125,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const storedDevice = await kvGet<string>(DEVICE_KEY);
-        if (storedDevice) deviceIdRef.current = storedDevice;
-        else await kvSet(DEVICE_KEY, deviceIdRef.current);
+        if (storedDevice) {
+          deviceIdRef.current = storedDevice;
+          setDeviceId(storedDevice);
+        } else {
+          await kvSet(DEVICE_KEY, deviceIdRef.current);
+        }
 
         const stored = await getStoredSession();
         if (stored && !isExpired(stored) && stored.saltLocal && stored.hashLocal) {
@@ -291,6 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         status,
         online,
         session,
+        deviceId,
         api,
         login,
         logout,

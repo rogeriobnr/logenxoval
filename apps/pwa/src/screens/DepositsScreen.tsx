@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import type { DepositoRow } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
-
-interface DepositoInfoC {
-  id: string;
-  numero: string;
-  nome: string;
-  status: 'ATIVO' | 'INATIVO';
-  versaoAtualEnxoval?: string;
-}
+import { listDepositosLocal, upsertDepositos } from '../repos/local';
 
 export function DepositsScreen() {
   const { api, session, changeDeposito } = useAuth();
-  const [deps, setDeps] = useState<DepositoInfoC[]>([]);
+  const [deps, setDeps] = useState<DepositoRow[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
@@ -28,12 +22,21 @@ export function DepositsScreen() {
   const matricula = session?.matricula ?? '';
 
   const carregar = useCallback(async () => {
+    if (!navigator.onLine) {
+      const locais = await listDepositosLocal();
+      setDeps(locais);
+      setLoadError('Modo offline — exibindo espelho local.');
+      return;
+    }
     try {
-      const res = await api.request<{ depositos: DepositoInfoC[] }>('GET', '/deposits');
+      const res = await api.request<{ depositos: DepositoRow[] }>('GET', '/deposits');
       setDeps(res.depositos);
+      await upsertDepositos(res.depositos);
       setLoadError(null);
-    } catch {
-      setLoadError('Não foi possível carregar os depósitos.');
+    } catch (err) {
+      const locais = await listDepositosLocal();
+      setDeps(locais);
+      setLoadError(err instanceof Error ? `Falha na rede — exibindo espelho local. ${err.message}` : 'Não foi possível carregar os depósitos.');
     }
   }, [api]);
 
@@ -46,7 +49,7 @@ export function DepositsScreen() {
     setBusy(true);
     setMsg(null);
     try {
-      await api.request<{ deposito: DepositoInfoC }>('POST', '/deposits', {
+      await api.request<{ deposito: DepositoRow }>('POST', '/deposits', {
         numero: numero.trim(),
         nome: nome.trim(),
         matriculaConfirmacao: matricula,
@@ -63,7 +66,7 @@ export function DepositsScreen() {
 
   const renomear = async (id: string) => {
     try {
-      await api.request<{ deposito: DepositoInfoC }>('PATCH', `/deposits/${id}`, {
+      await api.request<{ deposito: DepositoRow }>('PATCH', `/deposits/${id}`, {
         nome: editNome.trim(),
         matriculaConfirmacao: matricula,
         pin: pin.trim() || undefined,
@@ -78,7 +81,7 @@ export function DepositsScreen() {
 
   const desativar = async (id: string) => {
     try {
-      await api.request<{ deposito: DepositoInfoC }>('POST', `/deposits/${id}/deactivate`, {
+      await api.request<{ deposito: DepositoRow }>('POST', `/deposits/${id}/deactivate`, {
         matriculaConfirmacao: matricula,
         pin: pin.trim() || undefined,
         motivo: motivo.trim(),

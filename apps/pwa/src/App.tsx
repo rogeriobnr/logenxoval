@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from './auth/AuthContext';
 import { useHashRoute, navigate } from './router';
+import { espelharDepositos } from './services/sync';
 import { Header } from './components/Header';
 import { LoginScreen } from './screens/LoginScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
@@ -23,8 +24,26 @@ const PLACEHOLDER: Record<string, string> = {
 };
 
 export function App() {
-  const { status, session, logout, touchActivity } = useAuth();
+  const { status, session, logout, touchActivity, online, api, deviceId } = useAuth();
   const route = useHashRoute();
+
+  // Auto-espelho silencioso: ao abrir o app, ao voltar (focus) e ao voltar a haver rede (docs 7.1).
+  useEffect(() => {
+    if (status !== 'auth' || !online) return;
+    let lastRun = 0;
+    const run = () => {
+      const now = Date.now();
+      if (now - lastRun < 15_000) return;
+      lastRun = now;
+      void espelharDepositos({ api, deviceId }).catch(() => undefined);
+    };
+    run();
+    const onFocus = () => {
+      if (navigator.onLine) run();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [status, online, api, deviceId]);
 
   // Atualiza lastActivityAt a cada interação (docs 3.5).
   useEffect(() => {
