@@ -39,12 +39,12 @@ export const createUserBodySchema = z.object({
   sobrenome: z.string().trim().min(2),
   matricula: matriculaSchema,
   senha: z.string().min(8),
-  perfil: z.enum(Object.values(PERFIL) as [string, ...string[]]),
+  perfil: z.enum([PERFIL.MECANICO, PERFIL.LIDER, PERFIL.ADMIN]),
 });
 
 export const updateUserBodySchema = z.object({
-  status: z.enum(Object.values(USER_STATUS) as [string, ...string[]]).optional(),
-  perfil: z.enum(Object.values(PERFIL) as [string, ...string[]]).optional(),
+  status: z.enum([USER_STATUS.ATIVO, USER_STATUS.BLOQUEADO]).optional(),
+  perfil: z.enum([PERFIL.MECANICO, PERFIL.LIDER, PERFIL.ADMIN]).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -83,7 +83,13 @@ export const inventoryItemSchema = z.object({
   valorTotal: z.number().nonnegative().optional(),
   unidadeMedida: z.string().trim().max(20).optional(),
   estoqueMinimo: z.number().int().min(0).optional(),
-  status: z.enum(Object.values(ITEM_STATUS) as [string, ...string[]]).default(ITEM_STATUS.ATIVO),
+  status: z.enum([
+    ITEM_STATUS.ATIVO,
+    ITEM_STATUS.INATIVO,
+    ITEM_STATUS.REMOVIDO_DA_LISTA_OFICIAL,
+    ITEM_STATUS.ALTERADO,
+    ITEM_STATUS.PENDENTE_DE_REVISAO,
+  ]).default(ITEM_STATUS.ATIVO),
 });
 
 export const importEnxovalBodySchema = z.object({

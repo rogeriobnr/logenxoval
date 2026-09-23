@@ -29,6 +29,7 @@ const TABELAS = [
   'goldbox_movements',
   'inventory_items',
   'deposit_versions',
+  'user_deposits',
   'deposits',
   'sessions',
   'users',
@@ -37,11 +38,23 @@ const TABELAS = [
 
 export async function resetDb(): Promise<void> {
   const pool = getPool();
-  await pool.query('BEGIN');
-  for (const t of TABELAS) {
-    await pool.query(`DELETE FROM ${t}`);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('ALTER TABLE audit_logs DISABLE TRIGGER ALL');
+    await client.query('ALTER TABLE processed_operations DISABLE TRIGGER ALL');
+    for (const t of TABELAS) {
+      await client.query(`DELETE FROM ${t}`);
+    }
+    await client.query('ALTER TABLE audit_logs ENABLE TRIGGER ALL');
+    await client.query('ALTER TABLE processed_operations ENABLE TRIGGER ALL');
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
   }
-  await pool.query('COMMIT');
 }
 
 /** Abre transação com contexto RLS de depósito — repositórios passam pelo caller. */

@@ -1,17 +1,23 @@
 import Fastify, { type FastifyInstance, type FastifyError } from 'fastify';
 import jwt from '@fastify/jwt';
+import cors from '@fastify/cors';
 import { errorResponse } from './lib/errors';
 import { getPool } from './db/pool';
+import { registerAuthRoutes } from './routes/auth';
+import { registerUserRoutes } from './routes/users';
+import { registerDepositRoutes } from './routes/deposits';
 
 export interface AppOptions {
   jwtSecret: string;
   logger?: boolean;
+  corsOrigins?: string[];
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false });
 
   await app.register(jwt, { secret: opts.jwtSecret });
+  await app.register(cors, { origin: opts.corsOrigins ?? true });
 
   app.setErrorHandler((err: unknown, _req, reply) => {
     if (err instanceof Error && 'validation' in err && (err as { validation?: unknown }).validation) {
@@ -32,6 +38,10 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const { rows } = await pool.query('SELECT 1 AS ok');
     return { status: 'ok', db: rows[0]?.ok === 1 };
   });
+
+  await registerAuthRoutes(app);
+  await registerUserRoutes(app);
+  await registerDepositRoutes(app);
 
   return app;
 }
