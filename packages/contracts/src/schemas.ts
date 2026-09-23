@@ -115,13 +115,26 @@ export const baixaBodySchema = z.object({
   dispositivo: z.string().min(1),
   dataHora: iso,
   assinaturaMatricula: z.string().min(3),
+  /** Confirmação crítica digitada pelo usuário — validada contra o usuário logado. */
+  matriculaConfirmacao: matriculaSchema.optional(),
 });
 
 export const estornoBodySchema = z.object({
+  operationId,
   operationIdOriginal: operationId,
   motivo: z.string().trim().min(5),
   assinaturaMatricula: z.string().min(3),
   pin: z.string().optional(),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
+export const goldboxQuerySchema = z.object({
+  dataIni: iso.optional(),
+  dataFim: iso.optional(),
+  codigoSap: codigoSapSchema.optional(),
+  usuario: matriculaSchema.optional(),
+  reposicao: z.enum(['true', 'false']).optional(),
+  tipo: z.enum(['BAIXA', 'ESTORNO']).optional(),
 });
 
 // ---------------------------------------------------------------------------

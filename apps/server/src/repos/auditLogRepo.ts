@@ -16,8 +16,12 @@ export interface AuditInput {
   dispositivo: string;
 }
 
-export async function insertAuditLog(input: AuditInput): Promise<AuditLogRow> {
-  const pool = getPool();
+export interface Queryable {
+  query: (sql: string, params?: unknown[]) => Promise<unknown>;
+}
+
+/** Insere log na conexão/transação informada (permite atomicidade com a operação). */
+export async function insertAuditLogWith(q: Queryable, input: AuditInput): Promise<AuditLogRow> {
   const canonical = JSON.stringify({
     tipo: input.tipo,
     usuarioId: input.usuarioId,
@@ -32,7 +36,7 @@ export async function insertAuditLog(input: AuditInput): Promise<AuditLogRow> {
     dispositivo: input.dispositivo,
   });
   const hash = sha256Hex(canonical);
-  const { rows } = await pool.query(
+  const res = await q.query(
     `INSERT INTO audit_logs
       (id, tipo, data_hora, usuario_id, matricula, deposito_id, entidade, operacao_id,
        estado_anterior, estado_posterior, motivo, origem, dispositivo, hash)
@@ -54,7 +58,11 @@ export async function insertAuditLog(input: AuditInput): Promise<AuditLogRow> {
       hash,
     ],
   );
-  return rows[0];
+  return (res as { rows?: Array<Record<string, unknown>> }).rows?.[0] as unknown as AuditLogRow;
+}
+
+export async function insertAuditLog(input: AuditInput): Promise<AuditLogRow> {
+  return insertAuditLogWith(getPool(), input);
 }
 
 export async function listAuditLogs(params: {

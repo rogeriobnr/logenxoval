@@ -11,6 +11,7 @@ export type ErrorCode =
   | 'OPERATION_DUPLICADA'
   | 'CONFLITO_PENDENTE'
   | 'OPERACAO_NEGADA'
+  | 'ITEM_INDISPONIVEL'
   | 'CONFIG_INVALIDA';
 
 export class AppError extends Error {
