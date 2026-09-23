@@ -35,7 +35,13 @@ export function SyncModal({ open, onClose }: { open: boolean; onClose: () => voi
           },
         });
         if (!cancel) {
-          setSteps((prev) => [...prev, { message: `Espelho atualizado (${res.sincronizados} depósito(s)).`, ok: true }]);
+          const extras = [res.enviadas ? `${res.enviadas} baixa(s) enviada(s)` : null, res.errosFila ? `${res.errosFila} erro(s) na fila` : null]
+            .filter(Boolean)
+            .join(' · ');
+          setSteps((prev) => [
+            ...prev,
+            { message: `Espelho atualizado (${res.sincronizados} depósito(s)).${extras ? ` ${extras}.` : ''}`, ok: true },
+          ]);
         }
       } catch (err) {
         if (!cancel) {

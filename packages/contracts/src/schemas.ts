@@ -137,6 +137,25 @@ export const goldboxQuerySchema = z.object({
   tipo: z.enum(['BAIXA', 'ESTORNO']).optional(),
 });
 
+/** Payload de uma baixa enviada pela fila offline (docs 8/11). */
+export const syncPayloadBaixaSchema = baixaBodySchema.omit({ operationId: true }).extend({
+  depositoId: z.string().min(1),
+});
+
+export const syncOperationSchema = z.object({
+  operationId,
+  entidade: z.enum(['BAIXA']),
+  acao: z.enum(['CREATE']),
+  payload: z.unknown(),
+});
+
+export const syncBodySchema = z.object({
+  deviceId: z.string().min(1),
+  depositoId: z.string().min(1),
+  lastSyncAt: iso.optional(),
+  operations: z.array(syncOperationSchema).max(200),
+});
+
 // ---------------------------------------------------------------------------
 // Sincronização
 // ---------------------------------------------------------------------------

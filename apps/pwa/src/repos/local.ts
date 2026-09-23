@@ -2,7 +2,9 @@ import type {
   DepositVersionRow,
   DepositoRow,
   DivergenceRow,
+  GoldboxMovementRow,
   InventoryItemRow,
+  SyncQueueRow,
   SyncStateRow,
 } from '@logenxoval/contracts';
 import { db } from '../db/db';
@@ -59,6 +61,99 @@ export async function contarPendenciasFila(): Promise<number> {
   return db.syncQueue.where('status').equals('PENDENTE').count();
 }
 
+export interface BaixaOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  codigoSap: string;
+  descricao?: string;
+  quantidade: number;
+  reposicao: boolean;
+  dataHora: string;
+  usuarioId: string;
+  nomeCompleto: string;
+  matricula: string;
+  dispositivo: string;
+  assinaturaMatricula: string;
+}
+
+/**
+ * Registra uma baixa offline: movimento local com statusSync PENDENTE,
+ * débito otimista no saldo local e item na fila (fase 05).
+ */
+export async function registrarBaixaOffline(args: BaixaOfflineArgs): Promise<void> {
+  const movimento: GoldboxMovementRow = {
+    id: args.operationId,
+    operationId: args.operationId,
+    depositoId: args.depositoId,
+    codigoSap: args.codigoSap,
+    descricao: args.descricao,
+    quantidade: args.quantidade,
+    dataHora: args.dataHora,
+    usuarioId: args.usuarioId,
+    nomeCompleto: args.nomeCompleto,
+    matricula: args.matricula,
+    reposicao: args.reposicao,
+    origem: 'OFFLINE',
+    dispositivo: args.dispositivo,
+    statusSync: 'PENDENTE',
+    assinaturaMatricula: args.assinaturaMatricula,
+  };
+  const fila: SyncQueueRow = {
+    id: args.operationId,
+    operationId: args.operationId,
+    entidade: 'BAIXA',
+    acao: 'CREATE',
+    payload: {
+      depositoId: args.depositoId,
+      codigoSap: args.codigoSap,
+      descricao: args.descricao,
+      quantidade: args.quantidade,
+      reposicao: args.reposicao,
+      origem: 'OFFLINE',
+      dispositivo: args.dispositivo,
+      dataHora: args.dataHora,
+      assinaturaMatricula: args.assinaturaMatricula,
+      matriculaConfirmacao: args.matricula,
+    },
+    criadoEm: args.dataHora,
+    tentativas: 0,
+    proximaTentativaEm: args.dataHora,
+    status: 'PENDENTE',
+  };
+  await db.transaction('rw', [db.goldboxMovements, db.inventoryItems, db.syncQueue], async () => {
+    await db.goldboxMovements.put(movimento);
+    const item = await db.inventoryItems.where('[depositoId+codigoSap]').equals([args.depositoId, args.codigoSap]).first();
+    if (item) {
+      await db.inventoryItems.put({ ...item, qtdAtual: item.qtdAtual - args.quantidade });
+    }
+    await db.syncQueue.put(fila);
+  });
+}
+
+export async function listFila(): Promise<SyncQueueRow[]> {
+  return db.syncQueue.orderBy('criadoEm').toArray();
+}
+
+export async function removerDaFila(operationId: string): Promise<void> {
+  await db.syncQueue.delete(operationId);
+}
+
+export async function marcarFalhaFila(operationId: string, erro: string, tentativas: number = 1): Promise<void> {
+  const atual = await db.syncQueue.get(operationId);
+  if (!atual) return;
+  await db.syncQueue.put({
+    ...atual,
+    status: 'ERRO',
+    tentativas: (atual.tentativas ?? 0) + tentativas,
+    erro,
+  });
+}
+
+export async function listMovimentosLocais(depositoId: string): Promise<GoldboxMovementRow[]> {
+  const locais = await db.goldboxMovements.where('depositoId').equals(depositoId).sortBy('dataHora');
+  return locais.reverse();
+}
+
 export async function listDivergenciasAbertas(depositoId?: string): Promise<DivergenceRow[]> {
   const base = depositoId ? db.divergences.where('depositoId').equals(depositoId) : db.divergences;
   return (await base.toArray()).filter((d) => d.status === 'ABERTA');
@@ -72,13 +167,15 @@ export interface PendenciasLocais {
   fila: number;
   divergencias: number;
   negativos: number;
+  errosFila: number;
 }
 
 export async function getPendenciasLocais(depositoId?: string): Promise<PendenciasLocais> {
   const fila = await contarPendenciasFila();
+  const errosFila = await db.syncQueue.where('status').equals('ERRO').count();
   const divergencias = (await listDivergenciasAbertas(depositoId)).length;
   const negativos = (await listItensNegativos()).length;
-  return { fila, divergencias, negativos };
+  return { fila, divergencias, negativos, errosFila };
 }
 
 export async function getSyncState(

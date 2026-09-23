@@ -1,9 +1,13 @@
 import type { DepositVersionRow, DepositoRow, InventoryItemRow } from '@logenxoval/contracts';
 import type { ApiClient } from '../lib/api';
 import { emitSync } from '../lib/events';
+import { operacoesDaFila, processarRespostaFila } from '../lib/fila';
 import {
   clearDepositoLocalData,
   listDepositosLocal,
+  listFila,
+  marcarFalhaFila,
+  removerDaFila,
   setSyncState,
   upsertDepositos,
   upsertInventoryItems,
@@ -13,6 +17,59 @@ import {
 export interface EspelhoResult {
   sincronizados: number;
   lastSyncAt: string;
+  enviadas: number;
+  errosFila: number;
+}
+
+export interface FlushResult {
+  enviadas: number;
+  erros: number;
+}
+
+/** Envia as baixas pendentes de um depósito (post /sync) e aplica acks/erros. */
+export async function enviarBaixasPendentes(
+  api: ApiClient,
+  deviceId: string,
+  depositoId: string,
+  report?: (message: string) => void,
+): Promise<FlushResult> {
+  const fila = await listFila();
+  const operacoes = operacoesDaFila(fila, depositoId);
+  if (operacoes.length === 0) return { enviadas: 0, erros: 0 };
+  report?.(`Enviando ${operacoes.length} baixa(s) pendente(s)`);
+
+  const res = await api.request<{
+    acks: Array<{ operationId: string; status: 'OK' | 'JA_PROCESSADO' }>;
+    errors: Array<{ operationId: string; code: string; message?: string }>;
+    conflicts: Array<{ operationId: string; tipo: string; detalhe?: string }>;
+  }>('POST', '/sync', {
+    deviceId,
+    depositoId,
+    operations: operacoes.map((o) => ({
+      operationId: o.operationId,
+      entidade: o.entidade,
+      acao: o.acao,
+      payload: o.payload,
+    })),
+  });
+
+  const resultado = processarRespostaFila(operacoes, res);
+  let enviadas = 0;
+  let erros = 0;
+  for (const op of operacoes) {
+    if (resultado.ok.has(op.operationId)) {
+      await removerDaFila(op.operationId);
+      enviadas++;
+    } else if (resultado.conflitos.has(op.operationId)) {
+      await marcarFalhaFila(op.operationId, 'Conflito pendente — verificar no dashboard');
+      erros++;
+    } else {
+      const motivo = resultado.erros.get(op.operationId) ?? 'Erro de sincronização';
+      await marcarFalhaFila(op.operationId, motivo);
+      erros++;
+    }
+  }
+  return { enviadas, erros };
 }
 
 /** Espelha os itens e versões do enxoval de um depósito no IndexedDB. */
@@ -56,8 +113,19 @@ export async function espelharDepositos(params: {
     if (!ids.has(d.id)) await clearDepositoLocalData(d.id);
   }
 
+  let enviadas = 0;
+  let errosFila = 0;
   report(`Baixando o enxoval de ${res.depositos.length} depósito(s)`);
   for (const d of res.depositos) {
+    report(`Enviando baixas pendentes de ${d.numero}`);
+    try {
+      const flush = await enviarBaixasPendentes(api, deviceId, d.id, report);
+      enviadas += flush.enviadas;
+      errosFila += flush.erros;
+    } catch (err) {
+      errosFila += (await listFila()).filter((q) => q.status === 'ERRO').length;
+      report(`Falha ao enviar baixas de ${d.numero}: ${err instanceof Error ? err.message : 'erro'}`);
+    }
     try {
       await espelharEnxoval(api, d.id);
     } catch {
@@ -65,7 +133,7 @@ export async function espelharDepositos(params: {
     }
   }
 
-  report('Registrando última sincronização');
+  report('Verificando conflitos e registrando última sincronização');
   const lastSyncAt = new Date().toISOString();
   for (const d of res.depositos) {
     await setSyncState(deviceId, d.id, { lastSyncAt, status: 'SINCRONIZADO' });
@@ -73,5 +141,5 @@ export async function espelharDepositos(params: {
 
   report('Finalizando');
   emitSync();
-  return { sincronizados: res.depositos.length, lastSyncAt };
+  return { sincronizados: res.depositos.length, lastSyncAt, enviadas, errosFila };
 }

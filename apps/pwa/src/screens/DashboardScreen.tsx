@@ -41,7 +41,7 @@ function tempoRelativo(iso: string | null): string {
 
 export function DashboardScreen() {
   const { session, online, deviceId } = useAuth();
-  const [pendencias, setPendencias] = useState({ fila: 0, divergencias: 0, negativos: 0 });
+  const [pendencias, setPendencias] = useState({ fila: 0, divergencias: 0, negativos: 0, errosFila: 0 });
   const [ultimaSync, setUltimaSync] = useState<string | null>(null);
   const [erroSync, setErroSync] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -66,7 +66,7 @@ export function DashboardScreen() {
   const est = statusSync({
     online,
     filaPendente: pendencias.fila,
-    erro: erroSync && online,
+    erro: (erroSync || pendencias.errosFila > 0) && online,
     sincronizando: false,
     conflitoPendente: false,
   });
@@ -111,6 +111,12 @@ export function DashboardScreen() {
           <span className="list-title">Saldo negativo</span>
           <span>{pendencias.negativos}</span>
         </div>
+        {pendencias.errosFila > 0 && (
+          <div className="list-item">
+            <span className="list-title">Erros na fila de sincronização</span>
+            <span className="list-title warn">{pendencias.errosFila}</span>
+          </div>
+        )}
       </div>
 
       <Btn onClick={() => setModalOpen(true)} style={{ marginBottom: '1rem' }}>

@@ -3,7 +3,7 @@ import type { GoldboxMovementRow, InventoryItemRow } from '@logenxoval/contracts
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
 import { assinarMatricula } from '../lib/assinatura';
-import { listInventoryItemsLocal } from '../repos/local';
+import { listInventoryItemsLocal, listMovimentosLocais, registrarBaixaOffline } from '../repos/local';
 import { espelharEnxoval } from '../services/sync';
 
 type Tab = 'baixa' | 'historico';
@@ -100,7 +100,24 @@ export function GoldboxScreen() {
       return;
     }
     if (!navigator.onLine) {
-      setMsg({ kind: 'error', text: 'Baixas offline chegam na fase 05 (fila de sincronização).' });
+      const assinatura = await assinarMatricula(session.matricula);
+      await registrarBaixaOffline({
+        operationId: crypto.randomUUID(),
+        depositoId,
+        codigoSap: codigoSap.trim(),
+        descricao: descricao.trim() || undefined,
+        quantidade: qty,
+        reposicao,
+        dataHora: new Date().toISOString(),
+        usuarioId: session.userId,
+        nomeCompleto: session.nomeCompleto,
+        matricula: session.matricula,
+        dispositivo: deviceId,
+        assinaturaMatricula: assinatura,
+      });
+      setQuantidade('1');
+      setMsg({ kind: 'info', text: 'Baixa registrada no dispositivo (offline). Será enviada quando houver conexão.' });
+      await carregar();
       setBusy(false);
       return;
     }
@@ -136,7 +153,18 @@ export function GoldboxScreen() {
   const carregarHistorico = async () => {
     setHistMsg(null);
     if (!navigator.onLine) {
-      setHistMsg({ kind: 'error', text: 'Histórico online indisponível offline (sincronização chega na fase 05).' });
+      const locais = await listMovimentosLocais(depositoId);
+      const tipos = fTipo ? (fTipo === 'ESTORNO' ? (m: GoldboxMovementRow) => !!m.estornoDe : (m: GoldboxMovementRow) => !m.estornoDe) : () => true;
+      setMovs(
+        locais.filter(
+          (m) =>
+            tipos(m) &&
+            (!fCodigoSap.trim() || m.codigoSap === fCodigoSap.trim()) &&
+            (!fUsuario.trim() || m.matricula === fUsuario.trim()) &&
+            (!fReposicao || (m.reposicao === (fReposicao === 'true'))),
+        ),
+      );
+      setHistMsg({ kind: 'info', text: 'Modo offline — exibindo movimentações locais (incl. pendentes).' });
       return;
     }
     try {
@@ -167,6 +195,10 @@ export function GoldboxScreen() {
   const confirmarEstorno = async (e: FormEvent) => {
     e.preventDefault();
     if (!estornoAlvo) return;
+    if (!navigator.onLine) {
+      setHistMsg({ kind: 'error', text: 'Estorno requer conexão — baixe os estornos na fase 05 ficam online.' });
+      return;
+    }
     setEstornoBusy(true);
     setHistMsg(null);
     try {
