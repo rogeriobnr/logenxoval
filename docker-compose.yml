@@ -1,0 +1,22 @@
+# PostgreSQL local para desenvolvimento e testes
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: logenxoval-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: logenxoval
+      POSTGRES_PASSWORD: logenxoval
+      POSTGRES_DB: logenxoval
+    ports:
+      - "5433:5432"
+    volumes:
+      - logenxoval_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logenxoval"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  logenxoval_pgdata:

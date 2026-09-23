@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# Imagens/binários do app
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.webp binary
+*.ico binary

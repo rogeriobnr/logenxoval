@@ -1,10 +1,10 @@
 # 16 — Roadmap por Fases (Desenvolvimento e Versionamento)
 
-## Hosting definitivo
+## Hosting definitivo (decidido)
 
 - **GitHub**: repositório (você autentica `gh auth login`; eu commit por fase).
-- **Vercel**: app PWA (static) + API (Fastify serverless) no mesmo projeto/monorepo, com seu domínio.
-- **PostgreSQL**: provedor serverless (Neon/Supabase) com `DATABASE_URL` de pool — decidir no Q3. Local: Docker.
+- **Vercel**: app PWA (static) + API (Fastify serverless) no mesmo projeto/monorepo, com seu domínio. **O servidor roda na nuvem da Vercel — seu notebook desligado não afeta nada.**
+- **PostgreSQL**: postgres **gerenciado** na nuvem (Supabase ou Neon) com `DATABASE_URL` de pool (connection pooling) + RLS. Local: Docker na porta 5433.
 
 ## Estratégia git/github
 
