@@ -1,4 +1,4 @@
-import type { DepositoRow } from '@logenxoval/contracts';
+import type { DepositVersionRow, DepositoRow, InventoryItemRow } from '@logenxoval/contracts';
 import type { ApiClient } from '../lib/api';
 import { emitSync } from '../lib/events';
 import {
@@ -6,11 +6,29 @@ import {
   listDepositosLocal,
   setSyncState,
   upsertDepositos,
+  upsertInventoryItems,
+  upsertVersions,
 } from '../repos/local';
 
 export interface EspelhoResult {
   sincronizados: number;
   lastSyncAt: string;
+}
+
+/** Espelha os itens e versões do enxoval de um depósito no IndexedDB. */
+export async function espelharEnxoval(api: ApiClient, depositoId: string): Promise<void> {
+  const enxoval = await api.request<{
+    versao: DepositVersionRow | null;
+    itens: InventoryItemRow[];
+  }>('GET', `/deposits/${depositoId}/enxoval`);
+  if (enxoval.itens.length > 0) await upsertInventoryItems(enxoval.itens);
+  if (enxoval.versao) await upsertVersions([enxoval.versao]);
+
+  const versoes = await api.request<{ versoes: DepositVersionRow[] }>(
+    'GET',
+    `/deposits/${depositoId}/enxoval/versions`,
+  );
+  if (versoes.versoes.length > 0) await upsertVersions(versoes.versoes);
 }
 
 /**
@@ -36,6 +54,15 @@ export async function espelharDepositos(params: {
   const ids = new Set(res.depositos.map((d) => d.id));
   for (const d of locais) {
     if (!ids.has(d.id)) await clearDepositoLocalData(d.id);
+  }
+
+  report(`Baixando o enxoval de ${res.depositos.length} depósito(s)`);
+  for (const d of res.depositos) {
+    try {
+      await espelharEnxoval(api, d.id);
+    } catch {
+      // Depósito sem enxoval publicado ainda — segue sem itens locais.
+    }
   }
 
   report('Registrando última sincronização');

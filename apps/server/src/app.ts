@@ -6,6 +6,7 @@ import { getPool } from './db/pool';
 import { registerAuthRoutes } from './routes/auth';
 import { registerUserRoutes } from './routes/users';
 import { registerDepositRoutes } from './routes/deposits';
+import { registerEnxovalRoutes } from './routes/enxoval';
 
 export interface AppOptions {
   jwtSecret: string;
@@ -42,6 +43,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await registerAuthRoutes(app);
   await registerUserRoutes(app);
   await registerDepositRoutes(app);
+  await registerEnxovalRoutes(app);
 
   return app;
 }

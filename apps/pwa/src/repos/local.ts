@@ -1,4 +1,10 @@
-import type { DepositoRow, DivergenceRow, InventoryItemRow, SyncStateRow } from '@logenxoval/contracts';
+import type {
+  DepositVersionRow,
+  DepositoRow,
+  DivergenceRow,
+  InventoryItemRow,
+  SyncStateRow,
+} from '@logenxoval/contracts';
 import { db } from '../db/db';
 
 /** Acesso aos dados locais (espelho) — leituras offline e estado de sync. */
@@ -7,6 +13,38 @@ export async function upsertDepositos(depositos: DepositoRow[]): Promise<void> {
   await db.transaction('rw', db.deposits, async () => {
     for (const d of depositos) await db.deposits.put(d);
   });
+}
+
+export async function upsertVersions(versoes: DepositVersionRow[]): Promise<void> {
+  await db.transaction('rw', db.depositVersions, async () => {
+    for (const v of versoes) await db.depositVersions.put(v);
+  });
+}
+
+export async function upsertInventoryItems(itens: InventoryItemRow[]): Promise<void> {
+  await db.transaction('rw', db.inventoryItems, async () => {
+    for (const i of itens) await db.inventoryItems.put(i);
+  });
+}
+
+export async function listInventoryItemsLocal(depositoId: string): Promise<InventoryItemRow[]> {
+  return db.inventoryItems.where('depositoId').equals(depositoId).toArray();
+}
+
+export async function listVersionsLocal(depositoId: string): Promise<DepositVersionRow[]> {
+  return db.depositVersions.where('depositoId').equals(depositoId).sortBy('versao');
+}
+
+/** Itens da versão atual (por versãoAtualEnxoval do depósito local). */
+export async function getEnxovalAtualLocal(
+  depositoId: string,
+): Promise<{ versao: DepositVersionRow | null; itens: InventoryItemRow[] }> {
+  const dep = await db.deposits.get(depositoId);
+  const versaoId = dep?.versaoAtualEnxoval;
+  if (!versaoId) return { versao: null, itens: [] };
+  const todos = await listInventoryItemsLocal(depositoId);
+  const versao = await db.depositVersions.get(versaoId);
+  return { versao: versao ?? null, itens: todos.filter((i) => i.versao === versaoId) };
 }
 
 export async function listDepositosLocal(): Promise<DepositoRow[]> {

@@ -4,6 +4,7 @@ import type {
   ConsumableMovementRow,
   ConsumableRow,
   ConversionSuggestionRow,
+  DepositVersionRow,
   DepositoRow,
   DivergenceRow,
   DocumentRow,
@@ -58,7 +59,7 @@ class LogEnxovalDb extends Dexie {
   session!: Table<SessionRecord, string>;
   users!: Table<UserRow, string>;
   deposits!: Table<DepositoRow, string>;
-  depositVersions!: Table<{ id: string } & Record<string, unknown>, string>;
+  depositVersions!: Table<DepositVersionRow, string>;
   inventoryItems!: Table<InventoryItemRow, string>;
   goldboxMovements!: Table<GoldboxMovementRow, string>;
   spareParts!: Table<SparePartRow, string>;

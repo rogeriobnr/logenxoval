@@ -30,3 +30,29 @@ export async function setAppContext(
   const deposito = ctx.perfil === 'ADMIN' && ctx.depositoId === '*' ? '__ALL__' : ctx.depositoId;
   await client.query('SELECT set_config($1, $2, true)', ['app.deposito_id', deposito]);
 }
+
+/**
+ * Executa fn dentro de uma transação com o contexto RLS do depósito
+ * (app.deposito_id). Tabelas protegidas (inventory_items, deposit_versions,
+ * goldbox_movements, …) só são visíveis/graváveis com este contexto.
+ */
+export async function withDepositoContext<T>(
+  depositoId: string,
+  perfil: string,
+  fn: (client: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<T>,
+): Promise<T> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await setAppContext(client, { depositoId, perfil });
+    const out = await fn({ query: (sql, p) => client.query(sql, p) });
+    await client.query('COMMIT');
+    return out;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}

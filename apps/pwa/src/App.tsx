@@ -7,12 +7,12 @@ import { LoginScreen } from './screens/LoginScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { UsersScreen } from './screens/UsersScreen';
 import { DepositsScreen } from './screens/DepositsScreen';
+import { EnxovalScreen } from './screens/EnxovalScreen';
 import { ChangePasswordScreen } from './screens/ChangePasswordScreen';
 import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { Alert } from './components/ui';
 
 const PLACEHOLDER: Record<string, string> = {
-  '/enxoval': 'Enxoval',
   '/goldbox': 'Goldbox',
   '/pecas': 'Peças Avulsas',
   '/conferencias': 'Conferências',
@@ -95,6 +95,8 @@ export function App() {
     content = isAdmin ? <DepositsScreen /> : (
       <Alert kind="warn">Seu perfil não permite gerenciar depósitos.</Alert>
     );
+  } else if (route === '/enxoval') {
+    content = <EnxovalScreen />;
   } else if (route === '/senha') {
     content = <ChangePasswordScreen />;
   } else if (PLACEHOLDER[route]) {

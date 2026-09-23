@@ -97,6 +97,7 @@ export const importEnxovalBodySchema = z.object({
   refFolha: z.string().optional(),
   motivo: z.string().trim().min(5),
   matriculaConfirmacao: matriculaSchema,
+  pin: z.string().optional(),
   itens: z.array(inventoryItemSchema).min(1),
 });
 
