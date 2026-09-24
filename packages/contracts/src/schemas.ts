@@ -5,6 +5,8 @@ import {
   LOG_TIPO,
   ORIGEM_SPARE_PART,
   PERFIL,
+  REQUEST_STATUS,
+  SOLICITACAO_TIPO,
   SUGESTAO_STATUS,
   TIPO_CORRECAO,
   TIPO_MOVIMENTACAO_SPARE_PART,
@@ -231,6 +233,56 @@ export const syncPayloadSugestaoRespostaSchema = z.object({
   matriculaConfirmacao: matriculaSchema.optional(),
 });
 
+// ---------------------------------------------------------------------------
+// Consumíveis e EPIs (fase 10)
+// ---------------------------------------------------------------------------
+export const requestItemSchema = z.object({
+  codigo: z.string().trim().min(1).max(40),
+  descricao: z.string().trim().max(200).optional(),
+  qtd: z.number().int().positive(),
+});
+
+export const solicitacaoCreateBodySchema = z.object({
+  operationId,
+  tipo: z.enum([SOLICITACAO_TIPO.CONSUMIVEL, SOLICITACAO_TIPO.EPI]),
+  itens: z.array(requestItemSchema).min(1).max(50),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
+export const TRANSICOES_SOLICITACAO = [
+  REQUEST_STATUS.PRONTA_PARA_ENVIO,
+  REQUEST_STATUS.ENVIADA,
+  REQUEST_STATUS.RECEBIDA_PELA_LIDERANCA,
+  REQUEST_STATUS.APROVADA,
+  REQUEST_STATUS.ATENDIDA,
+  REQUEST_STATUS.CANCELADA,
+] as const;
+
+export const solicitacaoTransitionBodySchema = z.object({
+  operationId,
+  para: z.enum(TRANSICOES_SOLICITACAO),
+  motivo: z.string().trim().max(300).optional(),
+  pin: z.string().optional(),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
+export const syncPayloadSolicitacaoSchema = solicitacaoCreateBodySchema
+  .omit({ operationId: true })
+  .extend({
+    depositoId: z.string().min(1),
+    solicitanteId: z.string().min(1),
+    matricula: matriculaSchema,
+  });
+
+export const syncPayloadSolicitacaoTransitionSchema = solicitacaoTransitionBodySchema
+  .omit({ operationId: true })
+  .extend({
+    depositoId: z.string().min(1),
+    requestId: z.string().min(1),
+  });
+
 export const syncOperationSchema = z.object({
   operationId,
   entidade: z.enum([
@@ -239,6 +291,8 @@ export const syncOperationSchema = z.object({
     'SPARE_PART_SAIDA',
     'SUGESTAO_ACEITA',
     'SUGESTAO_RECUSADA',
+    'SOLICITACAO',
+    'SOLICITACAO_TRANSICAO',
   ]),
   acao: z.enum(['CREATE']),
   payload: z.unknown(),

@@ -13,6 +13,8 @@ import type {
   InspectionRow,
   InventoryItemRow,
   PpeItemRow,
+  PpeMovementRow,
+  RequestRow,
   SnapshotRow,
   SparePartMovementRow,
   SparePartRow,
@@ -67,7 +69,8 @@ class LogEnxovalDb extends Dexie {
   consumables!: Table<ConsumableRow, string>;
   consumableMovements!: Table<ConsumableMovementRow, string>;
   ppeItems!: Table<PpeItemRow, string>;
-  ppeMovements!: Table<{ id: string } & Record<string, unknown>, string>;
+  ppeMovements!: Table<PpeMovementRow, string>;
+  requests!: Table<RequestRow, string>;
   inspections!: Table<InspectionRow, string>;
   inspectionItems!: Table<InspectionItemRow, string>;
   conversionSuggestions!: Table<ConversionSuggestionRow, string>;
@@ -100,6 +103,33 @@ class LogEnxovalDb extends Dexie {
       consumableMovements: 'id, operationId, consumableId, depositoId',
       ppeItems: 'id, [depositoId+codigo], depositoId, codigo',
       ppeMovements: 'id, operationId, ppeItemId, depositoId',
+      inspections: 'id, depositoId, status, dataEm',
+      inspectionItems: 'id, inspectionId, codigoSap, status',
+      conversionSuggestions: 'id, depositoId, status',
+      divergences: 'id, depositoId, status, criadoEm',
+      auditLogs: 'id, depositoId, tipo, dataHora',
+      snapshots: 'id, depositoId, dataEm',
+      documents: 'id, depositoId',
+      syncQueue: 'id, operationId, entidade, acao, status, criadoEm, proximaTentativaEm',
+      processedOperations: 'operationId',
+      settings: '[chave+depositoId]',
+      syncState: '[deviceId+depositoId], status',
+    });
+    this.version(3).stores({
+      kv: 'key',
+      session: 'userId',
+      users: 'id, matricula, perfil, status',
+      deposits: 'id, numero, status',
+      depositVersions: 'id, depositoId, versao, status',
+      inventoryItems: 'id, [depositoId+codigoSap], depositoId, codigoSap, versao, status, atualizadoEm',
+      goldboxMovements: 'id, operationId, depositoId, codigoSap, dataHora, matricula, statusSync',
+      spareParts: 'id, [depositoId+codigoSap], depositoId, codigoSap, status',
+      sparePartMovements: 'id, operationId, sparePartId, depositoId',
+      consumables: 'id, [depositoId+codigo], depositoId, codigo',
+      consumableMovements: 'id, operationId, consumableId, depositoId',
+      ppeItems: 'id, [depositoId+codigo], depositoId, codigo',
+      ppeMovements: 'id, operationId, ppeItemId, depositoId',
+      requests: 'id, depositoId, tipo, solicitanteId, matricula, status, dataEm',
       inspections: 'id, depositoId, status, dataEm',
       inspectionItems: 'id, inspectionId, codigoSap, status',
       conversionSuggestions: 'id, depositoId, status',

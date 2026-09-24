@@ -1,9 +1,12 @@
 import type {
   AuditLogRow,
+  ConsumableRow,
   ConversionSuggestionRow,
   DepositVersionRow,
   DepositoRow,
   InventoryItemRow,
+  PpeItemRow,
+  RequestRow,
   SparePartRow,
 } from '@logenxoval/contracts';
 import type { ApiClient } from '../lib/api';
@@ -14,13 +17,17 @@ import {
   clearDepositoLocalData,
   listDepositosLocal,
   listFila,
+  listRequestsLocal,
   marcarFalhaFila,
   removerDaFila,
   setSyncState,
   upsertAuditLogs,
+  upsertConsumiveis,
   upsertConversionSuggestions,
   upsertDepositos,
   upsertInventoryItems,
+  upsertPpeItems,
+  upsertRequests,
   upsertSpareParts,
   upsertVersions,
 } from '../repos/local';
@@ -119,6 +126,39 @@ export async function espelharLogs(api: ApiClient, depositoId: string): Promise<
     `/deposits/${depositoId}/logs?dataIni=${encodeURIComponent(dataIni)}`,
   );
   if (res.logs.length > 0) await upsertAuditLogs(res.logs);
+}
+
+/**
+ * Fase 10: espelha consumíveis, EPIs e solicitações. Solicitações criadas
+ * offline (id `local:...`) que já não estão mais na fila (flushed) são
+ * removidas — o servidor passa a ser a verdade com o id real.
+ */
+export async function espelharEstoque(api: ApiClient, depositoId: string): Promise<void> {
+  const consumiveis = await api.request<{ consumiveis: ConsumableRow[] }>(
+    'GET',
+    `/deposits/${depositoId}/consumables`,
+  );
+  if (consumiveis.consumiveis.length > 0) await upsertConsumiveis(consumiveis.consumiveis);
+
+  const ppe = await api.request<{ ppe: PpeItemRow[] }>('GET', `/deposits/${depositoId}/ppe`);
+  if (ppe.ppe.length > 0) await upsertPpeItems(ppe.ppe);
+
+  const reqs = await api.request<{ solicitacoes: RequestRow[] }>(
+    'GET',
+    `/deposits/${depositoId}/requests`,
+  );
+  if (reqs.solicitacoes.length > 0) await upsertRequests(reqs.solicitacoes);
+
+  const fila = await listFila();
+  const emFila = new Set(
+    fila
+      .filter((q) => q.entidade === 'SOLICITACAO' && (q.status === 'PENDENTE' || q.status === 'ERRO'))
+      .map((q) => `local:${q.operationId}`),
+  );
+  const locais = (await listRequestsLocal(depositoId)).filter(
+    (r) => r.id.startsWith('local:') && !emFila.has(r.id),
+  );
+  for (const r of locais) await db.requests.delete(r.id);
 }
 
 /**
@@ -225,6 +265,7 @@ export async function espelharDepositos(params: {
     try {
       await espelharEnxoval(api, d.id);
       await espelharPecas(api, d.id);
+      await espelharEstoque(api, d.id);
       await espelharLogs(api, d.id);
     } catch {
       // Depósito sem enxoval publicado ainda — segue sem itens locais.

@@ -60,8 +60,13 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 ### Consumíveis / EPIs
 | Método | Rota | Descrição |
 | ------ | ---- | --------- |
-| GET | `/deposits/:id/consumables`, `/deposits/:id/consumables/:c/movements` | idem `ppe` |
-| GET/POST | `/deposits/:id/consumable-requests`, `/ppe-requests` | solicitações + transição de status |
+| GET | `/deposits/:id/consumables` | lista consumíveis |
+| GET | `/deposits/:id/consumables/:c/movements` | movimentos do consumível |
+| GET | `/deposits/:id/ppe` | lista EPIs |
+| GET | `/deposits/:id/ppe/:p/movements` | movimentos do EPI |
+| GET | `/deposits/:id/requests` | solicitações (mecânico vê as próprias; líder vê todas) |
+| POST | `/deposits/:id/requests` | criar solicitação (`{operationId, tipo: CONSUMIVEL\|EPI, itens[], assinaturaMatricula}`) |
+| POST | `/deposits/:id/requests/:rid/transition` | transição de status (`{operationId, para, motivo?, pin?, assinaturaMatricula}`) |
 
 ### Conferências
 | Método | Rota | Descrição |

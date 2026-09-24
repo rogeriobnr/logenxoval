@@ -1,7 +1,8 @@
 import type {
   DepositoStatus, DivergenciaStatus, DivergenciaTipo, InspectionItemStatus, InspectionStatus,
   ItemStatus, LogTipo, OrigemMovimentacao, OrigemSparePart, Perfil, RequestStatus,
-  SugestaoStatus, SyncStatus, TipoCorrecao, TipoMovimentacaoSparePart, UserStatus, VersionStatus,
+  SolicitacaoTipo, SugestaoStatus, SyncStatus, TipoCorrecao, TipoMovimentacaoEstoque,
+  TipoMovimentacaoSparePart, UserStatus, VersionStatus,
 } from './enums.js';
 
 /** Timestamp ISO-8601 UTC. */
@@ -148,7 +149,7 @@ export interface ConsumableMovementRow {
   consumableId: string;
   depositoId: string;
   operationId: OperationId;
-  tipo: 'ENTRADA' | 'SAIDA' | 'AJUSTE';
+  tipo: TipoMovimentacaoEstoque;
   quantidade: number;
   dataHora: ISO;
   usuarioId: string;
@@ -174,7 +175,7 @@ export interface PpeMovementRow {
   ppeItemId: string;
   depositoId: string;
   operationId: OperationId;
-  tipo: 'ENTRADA' | 'SAIDA' | 'AJUSTE';
+  tipo: TipoMovimentacaoEstoque;
   quantidade: number;
   dataHora: ISO;
   usuarioId: string;
@@ -185,7 +186,7 @@ export interface PpeMovementRow {
 export interface RequestRow {
   id: string;
   depositoId: string;
-  tipo: 'CONSUMIVEL' | 'EPI';
+  tipo: SolicitacaoTipo;
   solicitanteId: string;
   matricula: string;
   status: RequestStatus;

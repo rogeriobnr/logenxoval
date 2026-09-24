@@ -31,6 +31,12 @@ export const LOG_TIPO_LABEL: Record<LogTipo, string> = {
   CONFLITO: 'Conflito de sincronização',
   DIVERGENCIA: 'Divergência',
   BACKUP_RESTAURACAO: 'Backup / restauração',
+  SOLICITACAO_CRIADA: 'Solicitação criada',
+  SOLICITACAO_ATUALIZADA: 'Solicitação atualizada',
+  SOLICITACAO_ENVIADA: 'Solicitação enviada',
+  SOLICITACAO_APROVADA: 'Solicitação aprovada',
+  SOLICITACAO_ATENDIDA: 'Solicitação atendida',
+  SOLICITACAO_CANCELADA: 'Solicitação cancelada',
 };
 
 export const LOG_GRUPO: Record<LogTipo, LogGrupo> = {
@@ -62,6 +68,12 @@ export const LOG_GRUPO: Record<LogTipo, LogGrupo> = {
   CONFLITO: 'divergencia',
   DIVERGENCIA: 'divergencia',
   BACKUP_RESTAURACAO: 'lideranca',
+  SOLICITACAO_CRIADA: 'reposicao',
+  SOLICITACAO_ATUALIZADA: 'reposicao',
+  SOLICITACAO_ENVIADA: 'reposicao',
+  SOLICITACAO_APROVADA: 'reposicao',
+  SOLICITACAO_ATENDIDA: 'reposicao',
+  SOLICITACAO_CANCELADA: 'reposicao',
 };
 
 export const GRUPO_LABEL: Record<LogGrupo, string> = {

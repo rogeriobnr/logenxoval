@@ -3,6 +3,8 @@ import type { Perfil } from '@logenxoval/contracts';
 import {
   syncBodySchema,
   syncPayloadBaixaSchema,
+  syncPayloadSolicitacaoSchema,
+  syncPayloadSolicitacaoTransitionSchema,
   syncPayloadSparePartEntradaSchema,
   syncPayloadSparePartSaidaSchema,
   syncPayloadSugestaoRespostaSchema,
@@ -12,6 +14,7 @@ import { userHasDepositAccess } from '../repos/depositsRepo';
 import { registrarBaixa } from './goldboxService';
 import { registrarEntradaPeca, movimentarPecaAvulsa } from './spareService';
 import { responderSugestaoConversao } from './suggestionService';
+import { registrarSolicitacao, transicionarSolicitacaoService } from './requestService';
 
 export interface SyncDeps {
   app: FastifyInstance;
@@ -136,6 +139,49 @@ export async function processarSync(deps: SyncDeps, body: typeof syncBodySchema.
             motivo: p.data.motivo,
             assinaturaMatricula: p.data.assinaturaMatricula,
             matriculaConfirmacao: p.data.matriculaConfirmacao,
+          });
+          acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
+          break;
+        }
+        case 'SOLICITACAO': {
+          const p = syncPayloadSolicitacaoSchema.safeParse(op.payload);
+          if (!p.success) {
+            throw new AppError('VALIDATION_FAILED', 'Payload inválido na operação de solicitação', 400);
+          }
+          if (p.data.depositoId !== body.depositoId) {
+            throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
+          }
+          if (p.data.solicitanteId !== deps.authUser.sub) {
+            throw new AppError('PERMISSAO_NEGADA', 'solicitanteId da operação diverge do usuário', 403);
+          }
+          const res = await registrarSolicitacao(ctx, {
+            depositoId: body.depositoId,
+            operationId: op.operationId,
+            tipo: p.data.tipo,
+            itens: p.data.itens,
+            assinaturaMatricula: p.data.assinaturaMatricula,
+            matriculaConfirmacao: p.data.matriculaConfirmacao ?? deps.authUser.matricula,
+          });
+          acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
+          break;
+        }
+        case 'SOLICITACAO_TRANSICAO': {
+          const p = syncPayloadSolicitacaoTransitionSchema.safeParse(op.payload);
+          if (!p.success) {
+            throw new AppError('VALIDATION_FAILED', 'Payload inválido na transição de solicitação', 400);
+          }
+          if (p.data.depositoId !== body.depositoId) {
+            throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
+          }
+          const res = await transicionarSolicitacaoService(ctx, {
+            operationId: op.operationId,
+            depositoId: body.depositoId,
+            requestId: p.data.requestId,
+            para: p.data.para,
+            motivo: p.data.motivo,
+            pin: p.data.pin,
+            assinaturaMatricula: p.data.assinaturaMatricula,
+            matriculaConfirmacao: p.data.matriculaConfirmacao ?? deps.authUser.matricula,
           });
           acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
           break;

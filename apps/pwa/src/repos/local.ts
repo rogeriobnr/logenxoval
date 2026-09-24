@@ -1,5 +1,6 @@
 import type {
   AuditLogRow,
+  ConsumableRow,
   ConversionSuggestionRow,
   DepositVersionRow,
   DepositoRow,
@@ -9,6 +10,10 @@ import type {
   GoldboxMovementRow,
   InventoryItemRow,
   OrigemSparePart,
+  PpeItemRow,
+  RequestRow,
+  RequestStatus,
+  SolicitacaoTipo,
   SparePartMovementRow,
   SparePartRow,
   SugestaoStatus,
@@ -228,6 +233,7 @@ export async function clearDepositoLocalData(depositoId: string): Promise<void> 
       db.consumableMovements,
       db.ppeItems,
       db.ppeMovements,
+      db.requests,
       db.inspections,
       db.inspectionItems,
       db.conversionSuggestions,
@@ -249,6 +255,7 @@ export async function clearDepositoLocalData(depositoId: string): Promise<void> 
       await db.consumableMovements.where('depositoId').equals(depositoId).delete();
       await db.ppeItems.where('depositoId').equals(depositoId).delete();
       await db.ppeMovements.where('depositoId').equals(depositoId).delete();
+      await db.requests.where('depositoId').equals(depositoId).delete();
       await db.inspections.where('depositoId').equals(depositoId).delete();
       await db.inspectionItems.filter((it) => it.depositoId === depositoId).delete();
       await db.conversionSuggestions.where('depositoId').equals(depositoId).delete();
@@ -538,4 +545,104 @@ function enfileirar(
     proximaTentativaEm: criadoEm,
     status: 'PENDENTE',
   };
+}
+
+/** Fase 10: espelha consumíveis, EPIs e solicitações no IndexedDB. */
+export async function upsertConsumiveis(consumiveis: ConsumableRow[]): Promise<void> {
+  await db.transaction('rw', db.consumables, async () => {
+    for (const c of consumiveis) await db.consumables.put(c);
+  });
+}
+
+export async function upsertPpeItems(ppe: PpeItemRow[]): Promise<void> {
+  await db.transaction('rw', db.ppeItems, async () => {
+    for (const p of ppe) await db.ppeItems.put(p);
+  });
+}
+
+export async function upsertRequests(requests: RequestRow[]): Promise<void> {
+  await db.transaction('rw', db.requests, async () => {
+    for (const r of requests) await db.requests.put(r);
+  });
+}
+
+export async function listConsumiveisLocal(depositoId: string): Promise<ConsumableRow[]> {
+  const rows = await db.consumables.where('depositoId').equals(depositoId).toArray();
+  return rows.sort((a, b) => a.codigo.localeCompare(b.codigo));
+}
+
+export async function listPpeLocal(depositoId: string): Promise<PpeItemRow[]> {
+  const rows = await db.ppeItems.where('depositoId').equals(depositoId).toArray();
+  return rows.sort((a, b) => a.codigo.localeCompare(b.codigo));
+}
+
+export async function listRequestsLocal(depositoId: string): Promise<RequestRow[]> {
+  const rows = await db.requests.where('depositoId').equals(depositoId).toArray();
+  return rows.sort((a, b) => b.dataEm.localeCompare(a.dataEm));
+}
+
+export interface SolicitacaoOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  tipo: SolicitacaoTipo;
+  itens: Array<{ qtd: number; codigo: string; descricao: string }>;
+  solicitanteId: string;
+  matricula: string;
+  assinaturaMatricula: string;
+}
+
+/**
+ * Criação otimista de solicitação offline: registra a linha local (id local:...)
+ * e enfileira o envio (fase 10 / docs 12.6). O status permanece RASCUNHO até o
+ * flush; a transição era feita pelo usuário antes da sincronização.
+ */
+export async function registrarSolicitacaoOffline(args: SolicitacaoOfflineArgs): Promise<void> {
+  const criadoEm = new Date().toISOString();
+  const localId = `${LOCAL_ID}${args.operationId}`;
+  const req: RequestRow = {
+    id: localId,
+    depositoId: args.depositoId,
+    tipo: args.tipo,
+    solicitanteId: args.solicitanteId,
+    matricula: args.matricula,
+    status: 'RASCUNHO',
+    dataEm: criadoEm,
+    itens: args.itens,
+  };
+  await db.transaction('rw', [db.requests, db.syncQueue], async () => {
+    await db.requests.put(req);
+    await db.syncQueue.put(enfileirar(args, 'SOLICITACAO', criadoEm, {
+      solicitanteId: args.solicitanteId,
+      matricula: args.matricula,
+      tipo: args.tipo,
+      itens: args.itens,
+      assinaturaMatricula: args.assinaturaMatricula,
+    }));
+  });
+}
+
+export interface TransicaoSolicitacaoOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  requestId: string;
+  para: RequestStatus;
+  motivo?: string;
+  pin?: string;
+  assinaturaMatricula: string;
+}
+
+/** Transição otimista offline: atualiza o status local e enfileira o sync (docs 12.6). */
+export async function registrarTransicaoSolicitacaoOffline(args: TransicaoSolicitacaoOfflineArgs): Promise<void> {
+  const criadoEm = new Date().toISOString();
+  await db.transaction('rw', [db.requests, db.syncQueue], async () => {
+    const atual = await db.requests.get(args.requestId);
+    if (atual) await db.requests.put({ ...atual, status: args.para });
+    await db.syncQueue.put(enfileirar(args, 'SOLICITACAO_TRANSICAO', criadoEm, {
+      requestId: args.requestId,
+      para: args.para,
+      motivo: args.motivo,
+      pin: args.pin,
+      assinaturaMatricula: args.assinaturaMatricula,
+    }));
+  });
 }
