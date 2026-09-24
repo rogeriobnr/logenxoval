@@ -26,7 +26,7 @@
 | 06 | Conferência física | `feat(phase06): conferência física` | ✅ |
 | 07 | Correções e peças avulsas | `feat(phase07): correções e peças avulsas` | ✅ |
 | 08 | Logs e calendário | `feat(phase08): logs e calendário` | ✅ |
-| 09 | Atualização por foto/PDF/OCR | `feat(phase09): ocr` | ⏳ |
+| 09 | Atualização por foto/PDF/OCR | `feat(phase09): ocr` | ✅ |
 | 10 | Consumíveis e EPIs | `feat(phase10): consumíveis e EPIs` | ⏳ |
 | 11 | Relatórios PDF/PNG | `feat(phase11): relatórios` | ⏳ |
 | 12 | Espelhos e restauração | `feat(phase12): espelhos e restauração` | ⏳ |

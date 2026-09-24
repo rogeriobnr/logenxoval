@@ -4,6 +4,8 @@ import type {
   DepositVersionRow,
   DepositoRow,
   DivergenceRow,
+  DocumentRow,
+  DocumentoTipo,
   GoldboxMovementRow,
   InventoryItemRow,
   OrigemSparePart,
@@ -310,6 +312,71 @@ export async function upsertAuditLogs(logs: AuditLogRow[]): Promise<void> {
 export async function listAuditLogsLocal(depositoId: string): Promise<AuditLogRow[]> {
   const logs = await db.auditLogs.where('depositoId').equals(depositoId).toArray();
   return logs.sort((a, b) => b.dataHora.localeCompare(a.dataHora));
+}
+
+export async function upsertDocuments(documentos: DocumentRow[]): Promise<void> {
+  await db.transaction('rw', db.documents, async () => {
+    for (const d of documentos) await db.documents.put(d);
+  });
+}
+
+export async function listDocumentsLocal(depositoId: string): Promise<DocumentRow[]> {
+  const docs = await db.documents.where('depositoId').equals(depositoId).toArray();
+  return docs.sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+}
+
+export interface DocumentoOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  tipo: DocumentoTipo;
+  nome: string;
+  mime: string;
+  tamanho: number;
+  hashDocumento: string;
+  bytes: ArrayBuffer;
+  usuarioId: string;
+  matricula: string;
+}
+
+/**
+ * Captura offline: preserva o documento (blob + hash) no espelho local e
+ * enfileira o upload para quando houver conexão (docs 6.1 e 12.6).
+ */
+export async function registrarDocumentoOffline(args: DocumentoOfflineArgs): Promise<void> {
+  const criadoEm = new Date().toISOString();
+  const localId = `${LOCAL_ID}${args.operationId}`;
+  await db.transaction('rw', [db.documents, db.syncQueue], async () => {
+    await db.documents.put({
+      id: localId,
+      depositoId: args.depositoId,
+      tipo: args.tipo,
+      nome: args.nome,
+      mime: args.mime,
+      tamanho: args.tamanho,
+      hashDocumento: args.hashDocumento,
+      bytes: new Blob([args.bytes], { type: args.mime }),
+      criadoEm,
+      usuarioId: args.usuarioId,
+      matricula: args.matricula,
+    });
+    await db.syncQueue.put({
+      id: args.operationId,
+      operationId: args.operationId,
+      entidade: 'DOCUMENTO',
+      acao: 'CREATE',
+      payload: {
+        depositoId: args.depositoId,
+        nome: args.nome,
+        mime: args.mime,
+        tamanho: args.tamanho,
+        hashDocumento: args.hashDocumento,
+      },
+      criadoEm,
+      tentativas: 0,
+      proximaTentativaEm: criadoEm,
+      status: 'PENDENTE',
+    });
+  });
 }
 
 export interface EntradaPecaOfflineArgs {

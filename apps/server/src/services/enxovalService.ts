@@ -3,6 +3,8 @@ import type { DepositVersionRow, InventoryItemRow } from '@logenxoval/contracts'
 import { AppError } from '../lib/errors';
 import { insertAuditLog } from '../repos/auditLogRepo';
 import { findDepositById } from '../repos/depositsRepo';
+import { criarSnapshot } from '../repos/snapshotRepo';
+import { gerarSugestoesParaVersao } from '../repos/suggestionRepo';
 import {
   listItemsAtual,
   listItemsByVersion,
@@ -106,6 +108,51 @@ export async function importarEnxoval(
     origem: deps.origem,
     dispositivo: deps.dispositivo,
   });
+
+  // Fase 09 (docs 6.6): ponto de restauração (snapshot DEPOIS) + sugestões de
+  // conversão para SAPs da nova lista com peça avulsa disponível.
+  await criarSnapshot(
+    {
+      depositoId: params.depositoId,
+      titulo: `Enxoval pós-publicação v${resultado.versao.versao}`,
+      tipo: 'DEPOIS',
+      motivo: params.motivo,
+      usuarioId: deps.authUser.sub,
+      matricula: deps.authUser.matricula,
+    },
+    deps.authUser.perfil,
+  );
+  await gerarSugestoesParaVersao(
+    {
+      depositoId: params.depositoId,
+      perfil: deps.authUser.perfil,
+      usuarioId: deps.authUser.sub,
+      matricula: deps.authUser.matricula,
+      origemMov: deps.origem,
+      dispositivo: deps.dispositivo,
+    },
+    resultado.versao.id,
+  );
+
+  if (params.documentoId) {
+    await insertAuditLog({
+      tipo: 'IMPORTACAO_FOLHA',
+      usuarioId: deps.authUser.sub,
+      matricula: deps.authUser.matricula,
+      depositoId: params.depositoId,
+      entidade: 'documents',
+      operacaoId: resultado.versao.id,
+      estadoAnterior: { versao: resultado.versao.versao - 1 },
+      estadoPosterior: {
+        versao: resultado.versao.versao,
+        documentoId: params.documentoId,
+        referenciaFolha: params.refFolha ?? null,
+      },
+      motivo: params.motivo,
+      origem: deps.origem,
+      dispositivo: deps.dispositivo,
+    });
+  }
 
   return resultado;
 }

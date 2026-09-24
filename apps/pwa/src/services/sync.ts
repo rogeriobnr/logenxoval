@@ -9,6 +9,7 @@ import type {
 import type { ApiClient } from '../lib/api';
 import { emitSync } from '../lib/events';
 import { operacoesDaFila, processarRespostaFila } from '../lib/fila';
+import { db } from '../db/db';
 import {
   clearDepositoLocalData,
   listDepositosLocal,
@@ -44,7 +45,7 @@ export async function enviarBaixasPendentes(
   report?: (message: string) => void,
 ): Promise<FlushResult> {
   const fila = await listFila();
-  const operacoes = operacoesDaFila(fila, depositoId);
+  const operacoes = operacoesDaFila(fila, depositoId).filter((o) => o.entidade !== 'DOCUMENTO');
   if (operacoes.length === 0) return { enviadas: 0, erros: 0 };
   report?.(`Enviando ${operacoes.length} baixa(s) pendente(s)`);
 
@@ -121,6 +122,62 @@ export async function espelharLogs(api: ApiClient, depositoId: string): Promise<
 }
 
 /**
+ * Fase 09: faz upload dos documentos capturados offline (multipart) e sincroniza
+ * o id local → id do servidor no espelho.
+ */
+export async function enviarDocumentosPendentes(
+  api: ApiClient,
+  depositoId: string,
+  report?: (message: string) => void,
+): Promise<FlushResult> {
+  const fila = await listFila();
+  const pendentes = fila.filter((q) => q.entidade === 'DOCUMENTO' && (q.status === 'PENDENTE' || q.status === 'ERRO'));
+  if (pendentes.length === 0) return { enviadas: 0, erros: 0 };
+  report?.(`Enviando ${pendentes.length} documento(s) pendente(s)`);
+
+  let enviadas = 0;
+  let erros = 0;
+  for (const q of pendentes) {
+    const payload = q.payload as {
+      depositoId: string;
+      nome: string;
+      mime: string;
+      tamanho: number;
+      hashDocumento: string;
+    };
+    if (payload.depositoId !== depositoId) continue;
+    const local = await db.documents.get(q.id);
+    if (!local?.bytes) {
+      await marcarFalhaFila(q.id, 'Documento sem conteúdo no dispositivo');
+      erros++;
+      continue;
+    }
+    const form = new FormData();
+    const blob = local.bytes instanceof Blob ? local.bytes : new Blob([new Uint8Array(local.bytes)]);
+    form.append('file', blob, local.nome);
+    try {
+      const res = await api.upload<{ documento: { id: string; hash: string } }>(
+        `/documents?depositoId=${depositoId}`,
+        form,
+      );
+      await db.documents.put({
+        ...local,
+        id: res.documento.id,
+        hashDocumento: res.documento.hash,
+        depositoId,
+      });
+      await db.documents.delete(local.id);
+      await removerDaFila(q.id);
+      enviadas++;
+    } catch {
+      await marcarFalhaFila(q.id, 'Falha ao enviar documento');
+      erros++;
+    }
+  }
+  return { enviadas, erros };
+}
+
+/**
  * Fase 02: espelha os depósitos autorizados no IndexedDB.
  * A sync completa (push+fila+conflitos) chega na fase 05.
  */
@@ -157,6 +214,13 @@ export async function espelharDepositos(params: {
     } catch (err) {
       errosFila += (await listFila()).filter((q) => q.status === 'ERRO').length;
       report(`Falha ao enviar baixas de ${d.numero}: ${err instanceof Error ? err.message : 'erro'}`);
+    }
+    try {
+      const docs = await enviarDocumentosPendentes(api, d.id, report);
+      enviadas += docs.enviadas;
+      errosFila += docs.erros;
+    } catch {
+      // documento requer conexão — segue com a fila
     }
     try {
       await espelharEnxoval(api, d.id);

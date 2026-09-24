@@ -118,6 +118,80 @@ export async function gerarEListarSugestoes(params: GerarParams): Promise<Conver
   });
 }
 
+/**
+ * Fase 09: após publicar uma nova versão do enxoval, gera sugestões PENDENTE
+ * para SAPs da nova lista que tenham peça avulsa disponível e saldo abaixo do
+ * previsto (nunca converte automaticamente — docs 6.6).
+ */
+export async function gerarSugestoesParaVersao(
+  params: GerarParams,
+  versaoId: string,
+): Promise<number> {
+  return withDepositoContext(params.depositoId, params.perfil, async (client) => {
+    const pecas = await client.query(
+      `SELECT codigo_sap, SUM(quantidade_atual) AS disponivel
+       FROM spare_parts WHERE deposito_id = $1 AND status = 'ATIVO'
+       GROUP BY codigo_sap`,
+      [params.depositoId],
+    );
+    const porSap = new Map<string, number>();
+    for (const p of rowsOf(pecas)) porSap.set(p.codigo_sap as string, Number(p.disponivel));
+
+    const itens = await client.query(
+      `SELECT codigo_sap, texto_breve, qtd_oficial, qtd_atual
+       FROM inventory_items WHERE deposito_id = $1 AND versao = $2`,
+      [params.depositoId, versaoId],
+    );
+
+    let criadas = 0;
+    for (const item of rowsOf(itens)) {
+      const codigoSap = item.codigo_sap as string;
+      const disponivel = porSap.get(codigoSap) ?? 0;
+      const prevista = Number(item.qtd_oficial);
+      const atual = Number(item.qtd_atual);
+      if (disponivel <= 0 || atual >= prevista) continue;
+      const qtdSugerida = Math.min(disponivel, prevista - atual);
+      if (qtdSugerida <= 0) continue;
+
+      const pendente = await client.query(
+        `SELECT 1 FROM conversion_suggestions
+         WHERE deposito_id = $1 AND codigo_sap = $2 AND status = 'PENDENTE' LIMIT 1`,
+        [params.depositoId, codigoSap],
+      );
+      if (rowsOf(pendente)[0]) continue;
+
+      await client.query(
+        `INSERT INTO conversion_suggestions
+          (id, deposito_id, codigo_sap, descricao, qtd_disponivel_pecas, qtd_prevista_lista, qtd_sugerida, status, criado_por, versao_enxoval)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'PENDENTE',$8,$9)`,
+        [
+          newId(),
+          params.depositoId,
+          codigoSap,
+          item.texto_breve as string,
+          disponivel,
+          prevista,
+          qtdSugerida,
+          params.matricula,
+          versaoId,
+        ],
+      );
+      await insertAuditLogWith(client, {
+        tipo: 'SUGESTAO_CRIADA',
+        usuarioId: params.usuarioId,
+        matricula: params.matricula,
+        depositoId: params.depositoId,
+        entidade: 'conversion_suggestions',
+        estadoPosterior: { codigoSap, qtdSugerida, disponivel, prevista, origem: 'PUBLICACAO' },
+        origem: params.origemMov,
+        dispositivo: params.dispositivo,
+      });
+      criadas++;
+    }
+    return criadas;
+  });
+}
+
 export interface ResponderSugestaoParams {
   depositoId: string;
   perfil: string;

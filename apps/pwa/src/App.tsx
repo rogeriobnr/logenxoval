@@ -12,6 +12,7 @@ import { GoldboxScreen } from './screens/GoldboxScreen';
 import { ConferenciaScreen } from './screens/ConferenciaScreen';
 import { PecasScreen } from './screens/PecasScreen';
 import { LogsScreen } from './screens/LogsScreen';
+import { OcrReviewScreen } from './screens/OcrReviewScreen';
 import { ChangePasswordScreen } from './screens/ChangePasswordScreen';
 import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { Alert } from './components/ui';
@@ -105,6 +106,8 @@ export function App() {
     content = <PecasScreen />;
   } else if (route === '/logs') {
     content = <LogsScreen />;
+  } else if (route === '/revisao-ocr') {
+    content = <OcrReviewScreen />;
   } else if (route === '/senha') {
     content = <ChangePasswordScreen />;
   } else if (PLACEHOLDER[route]) {

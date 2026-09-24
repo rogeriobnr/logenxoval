@@ -125,4 +125,43 @@ export class ApiClient {
     if (res.status >= 200 && res.status < 300) return (res.body ?? {}) as T;
     throw new ApiError(res.status, this.codeOf(res.body), this.messageOf(res.body), undefined);
   }
+
+  /** POST multipart/form-data (upload de documento) com refresh rotativo. */
+  async upload<T>(path: string, formData: FormData): Promise<T> {
+    const tokens = this.opts.getTokens();
+    let res = await this.rawForm(path, formData, tokens?.access);
+    if (res.status === 401 && tokens) {
+      let access: string;
+      try {
+        access = await this.refreshAccess();
+      } catch (err) {
+        throw err;
+      }
+      res = await this.rawForm(path, formData, access);
+    }
+    if (res.status >= 200 && res.status < 300) return (res.body ?? {}) as T;
+    throw new ApiError(res.status, this.codeOf(res.body), this.messageOf(res.body), undefined);
+  }
+
+  private async rawForm(
+    path: string,
+    formData: FormData,
+    accessToken?: string,
+  ): Promise<{ status: number; body: unknown }> {
+    const headers: Record<string, string> = { 'X-Device-Id': this.opts.getDeviceId() };
+    if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+    let response: Response;
+    try {
+      response = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: formData });
+    } catch {
+      throw new ApiError(undefined, 'NETWORK', 'Sem conexão com o servidor');
+    }
+    let parsed: unknown = null;
+    try {
+      parsed = await response.json();
+    } catch {
+      parsed = null;
+    }
+    return { status: response.status, body: parsed };
+  }
 }

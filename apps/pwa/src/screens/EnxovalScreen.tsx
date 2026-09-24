@@ -3,6 +3,7 @@ import type { DepositVersionRow, InventoryItemRow } from '@logenxoval/contracts'
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
 import { parseLinhasEnxoval } from '../lib/enxoval';
+import { navigate } from '../router';
 import {
   getEnxovalAtualLocal,
   listInventoryItemsLocal,
@@ -223,8 +224,18 @@ export function EnxovalScreen() {
       </div>
 
       {podeImportar && (
-        <div className="card" style={{ marginTop: '0.8rem' }}>
-          <h3>Importar nova versão</h3>
+        <>
+          <div className="card" style={{ marginTop: '0.8rem' }}>
+            <div className="list-item">
+              <div>
+                <div className="list-title">Atualizar enxoval por foto / PDF (OCR)</div>
+                <div className="list-sub">Fotografe a folha, confira os itens reconhecidos e publique a nova versão.</div>
+              </div>
+              <Btn onClick={() => navigate('/revisao-ocr')}>📷 Capturar folha</Btn>
+            </div>
+          </div>
+          <div className="card" style={{ marginTop: '0.8rem' }}>
+            <h3>Importar nova versão</h3>
           <p className="muted">
             Uma linha por item no formato <code>codigoSap|textoBreve|qtdOficial|unidade</code> (unidade opcional).
           </p>
@@ -250,7 +261,8 @@ export function EnxovalScreen() {
               </Btn>
             </div>
           </form>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

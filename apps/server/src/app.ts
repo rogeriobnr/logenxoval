@@ -12,6 +12,7 @@ import { registerSyncRoutes } from './routes/sync';
 import { registerInspectionRoutes } from './routes/inspections';
 import { registerSpareRoutes } from './routes/spare';
 import { registerLogRoutes } from './routes/logs';
+import { registerDocumentRoutes } from './routes/documents';
 
 export interface AppOptions {
   jwtSecret: string;
@@ -54,6 +55,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await registerInspectionRoutes(app);
   await registerSpareRoutes(app);
   await registerLogRoutes(app);
+  await registerDocumentRoutes(app);
 
   return app;
 }
