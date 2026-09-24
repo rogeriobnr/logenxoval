@@ -11,6 +11,7 @@ import { registerGoldboxRoutes } from './routes/goldbox';
 import { registerSyncRoutes } from './routes/sync';
 import { registerInspectionRoutes } from './routes/inspections';
 import { registerSpareRoutes } from './routes/spare';
+import { registerLogRoutes } from './routes/logs';
 
 export interface AppOptions {
   jwtSecret: string;
@@ -52,6 +53,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await registerSyncRoutes(app);
   await registerInspectionRoutes(app);
   await registerSpareRoutes(app);
+  await registerLogRoutes(app);
 
   return app;
 }

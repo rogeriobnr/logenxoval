@@ -11,6 +11,7 @@ import { EnxovalScreen } from './screens/EnxovalScreen';
 import { GoldboxScreen } from './screens/GoldboxScreen';
 import { ConferenciaScreen } from './screens/ConferenciaScreen';
 import { PecasScreen } from './screens/PecasScreen';
+import { LogsScreen } from './screens/LogsScreen';
 import { ChangePasswordScreen } from './screens/ChangePasswordScreen';
 import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { Alert } from './components/ui';
@@ -19,7 +20,6 @@ const PLACEHOLDER: Record<string, string> = {
   '/consumiveis': 'Consumíveis',
   '/epis': 'EPIs',
   '/solicitacoes': 'Solicitações',
-  '/logs': 'Logs',
   '/configuracoes': 'Configurações',
 };
 
@@ -103,6 +103,8 @@ export function App() {
     content = <ConferenciaScreen />;
   } else if (route === '/pecas') {
     content = <PecasScreen />;
+  } else if (route === '/logs') {
+    content = <LogsScreen />;
   } else if (route === '/senha') {
     content = <ChangePasswordScreen />;
   } else if (PLACEHOLDER[route]) {

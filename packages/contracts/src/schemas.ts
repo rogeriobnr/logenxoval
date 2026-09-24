@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   DEPOSITO_STATUS,
   ITEM_STATUS,
+  LOG_TIPO,
   ORIGEM_SPARE_PART,
   PERFIL,
   SUGESTAO_STATUS,
@@ -145,6 +146,16 @@ export const goldboxQuerySchema = z.object({
   reposicao: z.enum(['true', 'false']).optional(),
   tipo: z.enum(['BAIXA', 'ESTORNO']).optional(),
 });
+
+export const logsQuerySchema = z.object({
+  dataIni: iso.optional(),
+  dataFim: iso.optional(),
+  tipo: z.enum(Object.values(LOG_TIPO) as [string, ...string[]]).optional(),
+  matricula: matriculaSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(2000).optional(),
+});
+
+export type LogsQuery = z.infer<typeof logsQuerySchema>;
 
 /** Payload de uma baixa enviada pela fila offline (docs 8/11). */
 export const syncPayloadBaixaSchema = baixaBodySchema.omit({ operationId: true }).extend({

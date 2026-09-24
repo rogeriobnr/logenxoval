@@ -1,4 +1,11 @@
-import type { ConversionSuggestionRow, DepositVersionRow, DepositoRow, InventoryItemRow, SparePartRow } from '@logenxoval/contracts';
+import type {
+  AuditLogRow,
+  ConversionSuggestionRow,
+  DepositVersionRow,
+  DepositoRow,
+  InventoryItemRow,
+  SparePartRow,
+} from '@logenxoval/contracts';
 import type { ApiClient } from '../lib/api';
 import { emitSync } from '../lib/events';
 import { operacoesDaFila, processarRespostaFila } from '../lib/fila';
@@ -9,6 +16,7 @@ import {
   marcarFalhaFila,
   removerDaFila,
   setSyncState,
+  upsertAuditLogs,
   upsertConversionSuggestions,
   upsertDepositos,
   upsertInventoryItems,
@@ -102,6 +110,16 @@ export async function espelharPecas(api: ApiClient, depositoId: string): Promise
   if (sugestoes.sugestoes.length > 0) await upsertConversionSuggestions(sugestoes.sugestoes);
 }
 
+/** Fase 08: espelha os últimos ~90 dias de logs de auditoria do depósito. */
+export async function espelharLogs(api: ApiClient, depositoId: string): Promise<void> {
+  const dataIni = new Date(Date.now() - 90 * 86_400_000).toISOString();
+  const res = await api.request<{ logs: AuditLogRow[] }>(
+    'GET',
+    `/deposits/${depositoId}/logs?dataIni=${encodeURIComponent(dataIni)}`,
+  );
+  if (res.logs.length > 0) await upsertAuditLogs(res.logs);
+}
+
 /**
  * Fase 02: espelha os depósitos autorizados no IndexedDB.
  * A sync completa (push+fila+conflitos) chega na fase 05.
@@ -143,6 +161,7 @@ export async function espelharDepositos(params: {
     try {
       await espelharEnxoval(api, d.id);
       await espelharPecas(api, d.id);
+      await espelharLogs(api, d.id);
     } catch {
       // Depósito sem enxoval publicado ainda — segue sem itens locais.
     }

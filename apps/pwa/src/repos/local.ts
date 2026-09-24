@@ -1,4 +1,5 @@
 import type {
+  AuditLogRow,
   ConversionSuggestionRow,
   DepositVersionRow,
   DepositoRow,
@@ -297,6 +298,18 @@ export async function listSparePartsLocal(depositoId: string): Promise<SparePart
 
 export async function listSuggestionsLocal(depositoId: string): Promise<ConversionSuggestionRow[]> {
   return db.conversionSuggestions.where('depositoId').equals(depositoId).toArray();
+}
+
+/** Fase 08: grava logs de auditoria no espelho local (leitura offline do calendário). */
+export async function upsertAuditLogs(logs: AuditLogRow[]): Promise<void> {
+  await db.transaction('rw', db.auditLogs, async () => {
+    for (const l of logs) await db.auditLogs.put(l);
+  });
+}
+
+export async function listAuditLogsLocal(depositoId: string): Promise<AuditLogRow[]> {
+  const logs = await db.auditLogs.where('depositoId').equals(depositoId).toArray();
+  return logs.sort((a, b) => b.dataHora.localeCompare(a.dataHora));
 }
 
 export interface EntradaPecaOfflineArgs {

@@ -58,16 +58,36 @@ export async function insertAuditLogWith(q: Queryable, input: AuditInput): Promi
       hash,
     ],
   );
-  return (res as { rows?: Array<Record<string, unknown>> }).rows?.[0] as unknown as AuditLogRow;
+  return mapAuditLog((res as { rows?: Array<Record<string, unknown>> }).rows?.[0]);
 }
 
 export async function insertAuditLog(input: AuditInput): Promise<AuditLogRow> {
   return insertAuditLogWith(getPool(), input);
 }
 
+function mapAuditLog(row?: Record<string, unknown>): AuditLogRow {
+  if (!row) throw new Error('audit_logs: registro não retornado pelo banco');
+  return {
+    id: row.id as string,
+    tipo: row.tipo as AuditLogRow['tipo'],
+    dataHora: row.data_hora as string,
+    usuarioId: row.usuario_id as string,
+    matricula: row.matricula as string,
+    depositoId: (row.deposito_id as string | null) ?? undefined,
+    entidade: row.entidade as string,
+    operacaoId: (row.operacao_id as string | null) ?? undefined,
+    estadoAnterior: (row.estado_anterior as unknown) ?? undefined,
+    estadoPosterior: (row.estado_posterior as unknown) ?? undefined,
+    motivo: (row.motivo as string | null) ?? undefined,
+    origem: row.origem as AuditLogRow['origem'],
+    dispositivo: row.dispositivo as string,
+    hash: row.hash as string,
+  };
+}
+
 export async function listAuditLogs(params: {
   depositoId?: string;
-  tipo?: string;
+  tipos?: string[];
   matricula?: string;
   dataIni?: string;
   dataFim?: string;
@@ -80,9 +100,15 @@ export async function listAuditLogs(params: {
     values.push(params.depositoId);
     where.push(`deposito_id = $${values.length}`);
   }
-  if (params.tipo) {
-    values.push(params.tipo);
-    where.push(`tipo = $${values.length}`);
+  if (params.tipos && params.tipos.length > 0) {
+    const lista = params.tipos.filter((t) => t);
+    if (lista.length === 1) {
+      values.push(lista[0]);
+      where.push(`tipo = $${values.length}`);
+    } else {
+      values.push(lista);
+      where.push(`tipo = ANY($${values.length})`);
+    }
   }
   if (params.matricula) {
     values.push(params.matricula);
@@ -99,5 +125,5 @@ export async function listAuditLogs(params: {
   values.push(params.limit ?? 500);
   const sql = `SELECT * FROM audit_logs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY data_hora DESC LIMIT $${values.length}`;
   const { rows } = await pool.query(sql, values);
-  return rows;
+  return rows.map((r) => mapAuditLog(r as Record<string, unknown>));
 }
