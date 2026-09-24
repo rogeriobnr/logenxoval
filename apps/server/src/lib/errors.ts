@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'OPERACAO_NEGADA'
   | 'ITEM_INDISPONIVEL'
   | 'INCOMPATIVEL'
+  | 'SALDO_CONFLITO'
   | 'CONFIG_INVALIDA';
 
 export class AppError extends Error {

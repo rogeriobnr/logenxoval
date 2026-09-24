@@ -1,11 +1,17 @@
 import type {
+  ConversionSuggestionRow,
   DepositVersionRow,
   DepositoRow,
   DivergenceRow,
   GoldboxMovementRow,
   InventoryItemRow,
+  OrigemSparePart,
+  SparePartMovementRow,
+  SparePartRow,
+  SugestaoStatus,
   SyncQueueRow,
   SyncStateRow,
+  TipoMovimentacaoSparePart,
 } from '@logenxoval/contracts';
 import { db } from '../db/db';
 
@@ -168,6 +174,7 @@ export interface PendenciasLocais {
   divergencias: number;
   negativos: number;
   errosFila: number;
+  sugestoesPendentes: number;
 }
 
 export async function getPendenciasLocais(depositoId?: string): Promise<PendenciasLocais> {
@@ -175,7 +182,10 @@ export async function getPendenciasLocais(depositoId?: string): Promise<Pendenci
   const errosFila = await db.syncQueue.where('status').equals('ERRO').count();
   const divergencias = (await listDivergenciasAbertas(depositoId)).length;
   const negativos = (await listItensNegativos()).length;
-  return { fila, divergencias, negativos, errosFila };
+  const sugestoes = depositoId
+    ? (await listSuggestionsLocal(depositoId)).filter((s) => s.status === 'PENDENTE').length
+    : 0;
+  return { fila, divergencias, negativos, errosFila, sugestoesPendentes: sugestoes };
 }
 
 export async function getSyncState(
@@ -247,4 +257,205 @@ export async function clearDepositoLocalData(depositoId: string): Promise<void> 
       await db.syncState.filter((s) => s.depositoId === depositoId).delete();
     },
   );
+}
+
+const LOCAL_ID = 'local:';
+
+export async function upsertSpareParts(pecas: SparePartRow[]): Promise<void> {
+  await db.transaction('rw', db.spareParts, async () => {
+    for (const p of pecas) await db.spareParts.put(p);
+  });
+}
+
+export async function upsertConversionSuggestions(sugestoes: ConversionSuggestionRow[]): Promise<void> {
+  await db.transaction('rw', db.conversionSuggestions, async () => {
+    for (const s of sugestoes) await db.conversionSuggestions.put(s);
+  });
+}
+
+/**
+ * Lista peças avulsas do espelho local. Entradas otimistas criadas offline usam
+ * id `local:...`; quando o servidor já tem a verdade (id real) para o mesmo SAP,
+ * a linha espelhada prevalece (evita duplicidade na listagem).
+ */
+export async function listSparePartsLocal(depositoId: string): Promise<SparePartRow[]> {
+  const rows = await db.spareParts.where('depositoId').equals(depositoId).toArray();
+  const porSap = new Map<string, SparePartRow>();
+  for (const p of rows) {
+    const atual = porSap.get(p.codigoSap);
+    if (!atual) {
+      porSap.set(p.codigoSap, p);
+      continue;
+    }
+    const preferido = p.id.startsWith(LOCAL_ID);
+    const atualPreferido = atual.id.startsWith(LOCAL_ID);
+    if (!preferido && atualPreferido) porSap.set(p.codigoSap, p);
+    else if (preferido === atualPreferido && !atualPreferido) porSap.set(p.codigoSap, p);
+  }
+  return Array.from(porSap.values()).sort((a, b) => a.codigoSap.localeCompare(b.codigoSap));
+}
+
+export async function listSuggestionsLocal(depositoId: string): Promise<ConversionSuggestionRow[]> {
+  return db.conversionSuggestions.where('depositoId').equals(depositoId).toArray();
+}
+
+export interface EntradaPecaOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  codigoSap: string;
+  descricao: string;
+  origem: OrigemSparePart;
+  quantidade: number;
+  observacao?: string;
+  usuarioId: string;
+  nomeCompleto: string;
+  matricula: string;
+  dispositivo: string;
+  assinaturaMatricula: string;
+}
+
+/** Entrada otimista de peça avulsa offline: movimento ENTRADA local + fila. */
+export async function registrarEntradaPecaOffline(args: EntradaPecaOfflineArgs): Promise<void> {
+  const dataHora = new Date().toISOString();
+  const localId = `${LOCAL_ID}${args.codigoSap}`;
+  await db.transaction('rw', [db.spareParts, db.sparePartMovements, db.syncQueue], async () => {
+    const atual = await db.spareParts.where('[depositoId+codigoSap]').equals([args.depositoId, args.codigoSap]).first();
+    const anterior = atual?.quantidadeAtual ?? 0;
+    await db.spareParts.put({
+      id: atual?.id ?? localId,
+      depositoId: args.depositoId,
+      codigoSap: args.codigoSap,
+      descricao: args.descricao,
+      quantidadeAtual: anterior + args.quantidade,
+      origem: args.origem,
+      dataEntrada: atual?.dataEntrada ?? dataHora,
+      responsavel: atual?.responsavel ?? args.matricula,
+      observacao: args.observacao,
+      status: 'ATIVO',
+    });
+    const movimento: SparePartMovementRow = {
+      id: args.operationId,
+      depositoId: args.depositoId,
+      sparePartId: atual?.id ?? localId,
+      operationId: args.operationId,
+      tipo: 'ENTRADA',
+      quantidade: args.quantidade,
+      dataHora,
+      usuarioId: args.usuarioId,
+      matricula: args.matricula,
+      motivo: args.observacao,
+      estadoAnterior: { quantidade: anterior },
+      estadoPosterior: { quantidade: anterior + args.quantidade },
+    };
+    await db.sparePartMovements.put(movimento);
+    await db.syncQueue.put(enfileirar(args, 'SPARE_PART_ENTRADA', dataHora, {
+      depositoId: args.depositoId,
+      codigoSap: args.codigoSap,
+      descricao: args.descricao,
+      origem: args.origem,
+      quantidade: args.quantidade,
+      observacao: args.observacao,
+      assinaturaMatricula: args.assinaturaMatricula,
+      matriculaConfirmacao: args.matricula,
+    }));
+  });
+}
+
+export interface MovimentoPecaOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  sparePartId: string;
+  tipo: Exclude<TipoMovimentacaoSparePart, 'ENTRADA' | 'AJUSTE_AUTORIZADO' | 'CONVERSAO_ACEITA' | 'DEVOLUCAO_CORRECAO'>;
+  quantidade: number;
+  motivo?: string;
+  usuarioId: string;
+  matricula: string;
+  dispositivo: string;
+  assinaturaMatricula: string;
+}
+
+/** Saída/descarte otimista offline: debita o saldo local + movimento + fila. */
+export async function registrarMovimentoPecaOffline(args: MovimentoPecaOfflineArgs): Promise<void> {
+  const dataHora = new Date().toISOString();
+  await db.transaction('rw', [db.spareParts, db.sparePartMovements, db.syncQueue], async () => {
+    const atual = await db.spareParts.get(args.sparePartId);
+    if (!atual) throw new Error('Peça avulsa não encontrada no dispositivo');
+    const anterior = atual.quantidadeAtual;
+    const novo = Math.max(0, anterior - args.quantidade);
+    await db.spareParts.put({ ...atual, quantidadeAtual: novo });
+    await db.sparePartMovements.put({
+      id: args.operationId,
+      depositoId: args.depositoId,
+      sparePartId: args.sparePartId,
+      operationId: args.operationId,
+      tipo: args.tipo,
+      quantidade: args.quantidade,
+      dataHora,
+      usuarioId: args.usuarioId,
+      matricula: args.matricula,
+      motivo: args.motivo,
+      estadoAnterior: { quantidade: anterior },
+      estadoPosterior: { quantidade: novo },
+    });
+    await db.syncQueue.put(enfileirar(args, 'SPARE_PART_SAIDA', dataHora, {
+      depositoId: args.depositoId,
+      sparePartId: args.sparePartId,
+      tipo: args.tipo,
+      quantidade: args.quantidade,
+      motivo: args.motivo,
+      assinaturaMatricula: args.assinaturaMatricula,
+      matriculaConfirmacao: args.matricula,
+    }));
+  });
+}
+
+export interface RespostaSugestaoOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  suggestionId: string;
+  acao: SugestaoStatus;
+  motivo?: string;
+  usuarioId: string;
+  matricula: string;
+  dispositivo: string;
+  assinaturaMatricula: string;
+}
+
+/** Resposta otimista a uma sugestão de conversão offline: marca local + fila. */
+export async function registrarRespostaSugestaoOffline(args: RespostaSugestaoOfflineArgs): Promise<void> {
+  const dataHora = new Date().toISOString();
+  const entidade = args.acao === 'ACEITA' ? 'SUGESTAO_ACEITA' : 'SUGESTAO_RECUSADA';
+  await db.transaction('rw', [db.conversionSuggestions, db.syncQueue], async () => {
+    const atual = await db.conversionSuggestions.get(args.suggestionId);
+    if (atual) {
+      await db.conversionSuggestions.put({ ...atual, status: args.acao, motivo: args.motivo });
+    }
+    await db.syncQueue.put(enfileirar(args, entidade, dataHora, {
+      depositoId: args.depositoId,
+      suggestionId: args.suggestionId,
+      acao: args.acao,
+      motivo: args.motivo,
+      assinaturaMatricula: args.assinaturaMatricula,
+      matriculaConfirmacao: args.matricula,
+    }));
+  });
+}
+
+function enfileirar(
+  args: { operationId: string; depositoId: string },
+  entidade: string,
+  criadoEm: string,
+  payload: unknown,
+): SyncQueueRow {
+  return {
+    id: args.operationId,
+    operationId: args.operationId,
+    entidade,
+    acao: 'CREATE',
+    payload: { ...(payload as object), depositoId: args.depositoId },
+    criadoEm,
+    tentativas: 0,
+    proximaTentativaEm: criadoEm,
+    status: 'PENDENTE',
+  };
 }

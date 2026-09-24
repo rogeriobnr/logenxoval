@@ -1,12 +1,21 @@
 import type { FastifyInstance } from 'fastify';
-import { syncBodySchema, syncPayloadBaixaSchema } from '@logenxoval/contracts';
+import type { Perfil } from '@logenxoval/contracts';
+import {
+  syncBodySchema,
+  syncPayloadBaixaSchema,
+  syncPayloadSparePartEntradaSchema,
+  syncPayloadSparePartSaidaSchema,
+  syncPayloadSugestaoRespostaSchema,
+} from '@logenxoval/contracts';
 import { AppError } from '../lib/errors';
 import { userHasDepositAccess } from '../repos/depositsRepo';
 import { registrarBaixa } from './goldboxService';
+import { registrarEntradaPeca, movimentarPecaAvulsa } from './spareService';
+import { responderSugestaoConversao } from './suggestionService';
 
 export interface SyncDeps {
   app: FastifyInstance;
-  authUser: { sub: string; matricula: string; perfil: string };
+  authUser: { sub: string; matricula: string; perfil: Perfil };
   dispositivo: string;
 }
 
@@ -33,34 +42,107 @@ export async function processarSync(deps: SyncDeps, body: typeof syncBodySchema.
 
   for (const op of body.operations) {
     try {
-      if (op.entidade !== 'BAIXA' || op.acao !== 'CREATE') {
+      if (op.acao !== 'CREATE') {
         throw new AppError('VALIDATION_FAILED', 'Operação não suportada na sincronização', 400);
       }
-      const p = syncPayloadBaixaSchema.safeParse(op.payload);
-      if (!p.success) {
-        throw new AppError('VALIDATION_FAILED', 'Payload inválido na operação de baixa', 400);
+      const ctx = { app: deps.app, authUser: deps.authUser, dispositivo: deps.dispositivo, origem: 'OFFLINE' as const };
+      switch (op.entidade) {
+        case 'BAIXA': {
+          const p = syncPayloadBaixaSchema.safeParse(op.payload);
+          if (!p.success) {
+            throw new AppError('VALIDATION_FAILED', 'Payload inválido na operação de baixa', 400);
+          }
+          if (p.data.depositoId !== body.depositoId) {
+            throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
+          }
+          const res = await registrarBaixa(ctx, {
+            depositoId: body.depositoId,
+            operationId: op.operationId,
+            codigoSap: p.data.codigoSap,
+            materialId: p.data.materialId,
+            descricao: p.data.descricao,
+            quantidade: p.data.quantidade,
+            reposicao: p.data.reposicao,
+            origem: 'OFFLINE',
+            dispositivo: deps.dispositivo,
+            dataHora: p.data.dataHora,
+            assinaturaMatricula: p.data.assinaturaMatricula,
+            matriculaConfirmacao: p.data.matriculaConfirmacao,
+          });
+          acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
+          break;
+        }
+        case 'SPARE_PART_ENTRADA': {
+          const p = syncPayloadSparePartEntradaSchema.safeParse(op.payload);
+          if (!p.success) {
+            throw new AppError('VALIDATION_FAILED', 'Payload inválido na operação de entrada de peça avulsa', 400);
+          }
+          if (p.data.depositoId !== body.depositoId) {
+            throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
+          }
+          const res = await registrarEntradaPeca(ctx, {
+            depositoId: body.depositoId,
+            operationId: op.operationId,
+            codigoSap: p.data.codigoSap,
+            descricao: p.data.descricao,
+            foto: p.data.foto,
+            origem: p.data.origem,
+            quantidade: p.data.quantidade,
+            observacao: p.data.observacao,
+            assinaturaMatricula: p.data.assinaturaMatricula,
+            matriculaConfirmacao: p.data.matriculaConfirmacao,
+          });
+          acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
+          break;
+        }
+        case 'SPARE_PART_SAIDA': {
+          const p = syncPayloadSparePartSaidaSchema.safeParse(op.payload);
+          if (!p.success) {
+            throw new AppError('VALIDATION_FAILED', 'Payload inválido na operação de saída de peça avulsa', 400);
+          }
+          if (p.data.depositoId !== body.depositoId) {
+            throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
+          }
+          const res = await movimentarPecaAvulsa(ctx, {
+            depositoId: body.depositoId,
+            sparePartId: p.data.sparePartId,
+            operationId: op.operationId,
+            tipo: p.data.tipo,
+            quantidade: p.data.quantidade,
+            novoSaldo: p.data.novoSaldo,
+            motivo: p.data.motivo,
+            pin: p.data.pin,
+            assinaturaMatricula: p.data.assinaturaMatricula,
+            matriculaConfirmacao: p.data.matriculaConfirmacao,
+          });
+          acks.push({ operationId: op.operationId, status: 'OK' });
+          break;
+        }
+        case 'SUGESTAO_ACEITA':
+        case 'SUGESTAO_RECUSADA': {
+          const p = syncPayloadSugestaoRespostaSchema.safeParse(op.payload);
+          if (!p.success) {
+            throw new AppError('VALIDATION_FAILED', 'Payload inválido na operação de sugestão', 400);
+          }
+          if (p.data.depositoId !== body.depositoId) {
+            throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
+          }
+          const acao = op.entidade === 'SUGESTAO_ACEITA' ? 'ACEITA' : 'RECUSADA';
+          const res = await responderSugestaoConversao(ctx, {
+            depositoId: body.depositoId,
+            suggestionId: p.data.suggestionId,
+            operationId: op.operationId,
+            acao,
+            motivo: p.data.motivo,
+            assinaturaMatricula: p.data.assinaturaMatricula,
+            matriculaConfirmacao: p.data.matriculaConfirmacao,
+          });
+          acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
+          break;
+        }
+        default:
+          throw new AppError('VALIDATION_FAILED', 'Operação não suportada na sincronização', 400);
       }
-      if (p.data.depositoId !== body.depositoId) {
-        throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
-      }
-      const res = await registrarBaixa(
-        { app: deps.app, authUser: deps.authUser, dispositivo: deps.dispositivo, origem: 'OFFLINE' },
-        {
-          depositoId: body.depositoId,
-          operationId: op.operationId,
-          codigoSap: p.data.codigoSap,
-          materialId: p.data.materialId,
-          descricao: p.data.descricao,
-          quantidade: p.data.quantidade,
-          reposicao: p.data.reposicao,
-          origem: 'OFFLINE',
-          dispositivo: deps.dispositivo,
-          dataHora: p.data.dataHora,
-          assinaturaMatricula: p.data.assinaturaMatricula,
-          matriculaConfirmacao: p.data.matriculaConfirmacao,
-        },
-      );
-      acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
     } catch (err) {
       if (err instanceof AppError) {
         errors.push({ operationId: op.operationId, code: err.code, message: err.message });

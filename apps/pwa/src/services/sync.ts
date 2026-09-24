@@ -1,4 +1,4 @@
-import type { DepositVersionRow, DepositoRow, InventoryItemRow } from '@logenxoval/contracts';
+import type { ConversionSuggestionRow, DepositVersionRow, DepositoRow, InventoryItemRow, SparePartRow } from '@logenxoval/contracts';
 import type { ApiClient } from '../lib/api';
 import { emitSync } from '../lib/events';
 import { operacoesDaFila, processarRespostaFila } from '../lib/fila';
@@ -9,8 +9,10 @@ import {
   marcarFalhaFila,
   removerDaFila,
   setSyncState,
+  upsertConversionSuggestions,
   upsertDepositos,
   upsertInventoryItems,
+  upsertSpareParts,
   upsertVersions,
 } from '../repos/local';
 
@@ -88,6 +90,18 @@ export async function espelharEnxoval(api: ApiClient, depositoId: string): Promi
   if (versoes.versoes.length > 0) await upsertVersions(versoes.versoes);
 }
 
+/** Fase 07: espelha peças avulsas e sugestões de conversão do depósito. */
+export async function espelharPecas(api: ApiClient, depositoId: string): Promise<void> {
+  const pecas = await api.request<{ pecas: SparePartRow[] }>('GET', `/deposits/${depositoId}/spare-parts`);
+  if (pecas.pecas.length > 0) await upsertSpareParts(pecas.pecas);
+
+  const sugestoes = await api.request<{ sugestoes: ConversionSuggestionRow[] }>(
+    'GET',
+    `/deposits/${depositoId}/conversion-suggestions`,
+  );
+  if (sugestoes.sugestoes.length > 0) await upsertConversionSuggestions(sugestoes.sugestoes);
+}
+
 /**
  * Fase 02: espelha os depósitos autorizados no IndexedDB.
  * A sync completa (push+fila+conflitos) chega na fase 05.
@@ -128,6 +142,7 @@ export async function espelharDepositos(params: {
     }
     try {
       await espelharEnxoval(api, d.id);
+      await espelharPecas(api, d.id);
     } catch {
       // Depósito sem enxoval publicado ainda — segue sem itens locais.
     }

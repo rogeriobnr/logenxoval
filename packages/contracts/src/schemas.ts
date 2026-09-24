@@ -1,5 +1,14 @@
 import { z } from 'zod';
-import { DEPOSITO_STATUS, ITEM_STATUS, PERFIL, TIPO_CORRECAO, USER_STATUS } from './enums.js';
+import {
+  DEPOSITO_STATUS,
+  ITEM_STATUS,
+  ORIGEM_SPARE_PART,
+  PERFIL,
+  SUGESTAO_STATUS,
+  TIPO_CORRECAO,
+  TIPO_MOVIMENTACAO_SPARE_PART,
+  USER_STATUS,
+} from './enums.js';
 
 const iso = z.string().datetime({ offset: true }).or(z.string());
 export const operationId = z.string().uuid().or(z.string().min(8).max(64));
@@ -142,9 +151,84 @@ export const syncPayloadBaixaSchema = baixaBodySchema.omit({ operationId: true }
   depositoId: z.string().min(1),
 });
 
+// ---------------------------------------------------------------------------
+// Peças avulsas e sugestões de conversão
+// ---------------------------------------------------------------------------
+export const sparePartEntradaBodySchema = z.object({
+  operationId,
+  codigoSap: codigoSapSchema,
+  descricao: z.string().trim().min(1).max(200),
+  foto: z.string().optional(),
+  origem: z.enum([
+    ORIGEM_SPARE_PART.BACKLOG,
+    ORIGEM_SPARE_PART.OUTRA_FRENTE,
+    ORIGEM_SPARE_PART.COMPRA_DEBITO_DIRETO,
+    ORIGEM_SPARE_PART.LIDERANCA,
+    ORIGEM_SPARE_PART.OUTRO,
+  ]),
+  quantidade: quantidadeSchema,
+  observacao: z.string().trim().max(200).optional(),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
+const TIPOS_MOVIMENTO_PECA = [
+  TIPO_MOVIMENTACAO_SPARE_PART.SAIDA,
+  TIPO_MOVIMENTACAO_SPARE_PART.USO_CORRECAO,
+  TIPO_MOVIMENTACAO_SPARE_PART.TRANSFERENCIA_INFORMATIVA,
+  TIPO_MOVIMENTACAO_SPARE_PART.DESCARTE,
+  TIPO_MOVIMENTACAO_SPARE_PART.AJUSTE_AUTORIZADO,
+] as const;
+export type TipoMovimentoPeca = (typeof TIPOS_MOVIMENTO_PECA)[number];
+
+export const sparePartMovimentoBodySchema = z.object({
+  operationId,
+  tipo: z.enum(TIPOS_MOVIMENTO_PECA),
+  quantidade: quantidadeSchema.optional(),
+  novoSaldo: z.number().int().min(0).optional(),
+  motivo: z.string().trim().min(2).max(300).optional(),
+  pin: z.string().optional(),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
+export const respondSuggestionBodySchema = z.object({
+  operationId,
+  acao: z.enum([SUGESTAO_STATUS.ACEITA, SUGESTAO_STATUS.RECUSADA]),
+  motivo: z.string().trim().min(2).optional(),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
+export const syncPayloadSparePartEntradaSchema = sparePartEntradaBodySchema
+  .omit({ operationId: true })
+  .extend({ depositoId: z.string().min(1) });
+
+export const syncPayloadSparePartSaidaSchema = sparePartMovimentoBodySchema
+  .omit({ operationId: true })
+  .extend({
+    depositoId: z.string().min(1),
+    sparePartId: z.string().min(1),
+  });
+
+export const syncPayloadSugestaoRespostaSchema = z.object({
+  depositoId: z.string().min(1),
+  suggestionId: z.string().min(1),
+  acao: z.enum([SUGESTAO_STATUS.ACEITA, SUGESTAO_STATUS.RECUSADA]),
+  motivo: z.string().trim().min(2).optional(),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
 export const syncOperationSchema = z.object({
   operationId,
-  entidade: z.enum(['BAIXA']),
+  entidade: z.enum([
+    'BAIXA',
+    'SPARE_PART_ENTRADA',
+    'SPARE_PART_SAIDA',
+    'SUGESTAO_ACEITA',
+    'SUGESTAO_RECUSADA',
+  ]),
   acao: z.enum(['CREATE']),
   payload: z.unknown(),
 });
