@@ -12,6 +12,7 @@ export type ErrorCode =
   | 'CONFLITO_PENDENTE'
   | 'OPERACAO_NEGADA'
   | 'ITEM_INDISPONIVEL'
+  | 'INCOMPATIVEL'
   | 'CONFIG_INVALIDA';
 
 export class AppError extends Error {

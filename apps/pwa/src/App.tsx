@@ -9,13 +9,13 @@ import { UsersScreen } from './screens/UsersScreen';
 import { DepositsScreen } from './screens/DepositsScreen';
 import { EnxovalScreen } from './screens/EnxovalScreen';
 import { GoldboxScreen } from './screens/GoldboxScreen';
+import { ConferenciaScreen } from './screens/ConferenciaScreen';
 import { ChangePasswordScreen } from './screens/ChangePasswordScreen';
 import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { Alert } from './components/ui';
 
 const PLACEHOLDER: Record<string, string> = {
   '/pecas': 'Peças Avulsas',
-  '/conferencias': 'Conferências',
   '/consumiveis': 'Consumíveis',
   '/epis': 'EPIs',
   '/solicitacoes': 'Solicitações',
@@ -99,6 +99,8 @@ export function App() {
     content = <EnxovalScreen />;
   } else if (route === '/goldbox') {
     content = <GoldboxScreen />;
+  } else if (route === '/conferencias') {
+    content = <ConferenciaScreen />;
   } else if (route === '/senha') {
     content = <ChangePasswordScreen />;
   } else if (PLACEHOLDER[route]) {

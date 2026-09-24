@@ -9,6 +9,8 @@ import { registerDepositRoutes } from './routes/deposits';
 import { registerEnxovalRoutes } from './routes/enxoval';
 import { registerGoldboxRoutes } from './routes/goldbox';
 import { registerSyncRoutes } from './routes/sync';
+import { registerInspectionRoutes } from './routes/inspections';
+import { registerSpareRoutes } from './routes/spare';
 
 export interface AppOptions {
   jwtSecret: string;
@@ -48,6 +50,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await registerEnxovalRoutes(app);
   await registerGoldboxRoutes(app);
   await registerSyncRoutes(app);
+  await registerInspectionRoutes(app);
+  await registerSpareRoutes(app);
 
   return app;
 }

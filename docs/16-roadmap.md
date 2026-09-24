@@ -23,7 +23,7 @@
 | 03 | Cadastro e consulta do enxoval | `feat(phase03): enxoval` | ✅ |
 | 04 | Baixa e Goldbox | `feat(phase04): baixa e goldbox` | ✅ |
 | 05 | Fila de sincronização | `feat(phase05): fila de sincronização` | ✅ |
-| 06 | Conferência física | `feat(phase06): conferência física` | ⏳ |
+| 06 | Conferência física | `feat(phase06): conferência física` | ✅ |
 | 07 | Correções e peças avulsas | `feat(phase07): correções e peças avulsas` | ⏳ |
 | 08 | Logs e calendário | `feat(phase08): logs e calendário` | ⏳ |
 | 09 | Atualização por foto/PDF/OCR | `feat(phase09): ocr` | ⏳ |

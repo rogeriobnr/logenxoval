@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { DEPOSITO_STATUS, ITEM_STATUS, PERFIL, USER_STATUS } from './enums.js';
+import { DEPOSITO_STATUS, ITEM_STATUS, PERFIL, TIPO_CORRECAO, USER_STATUS } from './enums.js';
 
 const iso = z.string().datetime({ offset: true }).or(z.string());
 export const operationId = z.string().uuid().or(z.string().min(8).max(64));
@@ -180,4 +180,61 @@ export const syncFullSchema = z.object({
 
 export const depositoParamSchema = z.object({
   depositoId: depositoIdSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Conferência física (docs 5)
+// ---------------------------------------------------------------------------
+export const inspectionItemInputSchema = z.object({
+  codigoSap: codigoSapSchema,
+  /** Quantidade contada fisicamente. O qtdSistema é lido do servidor. */
+  qtdFisica: z.number().int().min(0),
+  observacao: z.string().trim().max(500).optional(),
+});
+
+export const inspectionItemInputArraySchema = z
+  .array(inspectionItemInputSchema)
+  .min(1)
+  .max(500);
+
+export const createInspectionBodySchema = z.object({
+  hora: z.string().regex(/^\d{2}:\d{2}$/, 'hora deve usar HH:MM'),
+  observacao: z.string().trim().max(1000).optional(),
+  itens: inspectionItemInputArraySchema,
+  assinaturaMatricula: z.string().min(3),
+  /** Confirmação crítica digitada pelo usuário — validada contra o usuário logado. */
+  matriculaConfirmacao: matriculaSchema,
+});
+
+export const finalizeInspectionBodySchema = z.object({
+  observacao: z.string().trim().max(1000).optional(),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema,
+});
+
+export const revisionInspectionBodySchema = z.object({
+  hora: z.string().regex(/^\d{2}:\d{2}$/, 'hora deve usar HH:MM'),
+  observacao: z.string().trim().max(1000).optional(),
+  itens: inspectionItemInputArraySchema,
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema,
+});
+
+export const correctionBodySchema = z.object({
+  operationId,
+  tipo: z.nativeEnum(TIPO_CORRECAO),
+  /** Obrigatório para CORRIGIR_COM_PECA_AVULSA. */
+  sparePartId: z.string().optional(),
+  /** Obrigatório para CORRIGIR_COM_PECA_AVULSA. */
+  quantidade: z.number().int().min(1).max(9999).optional(),
+  observacao: z.string().trim().max(1000).optional(),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema,
+});
+
+export const revertCorrectionBodySchema = z.object({
+  operationId,
+  motivo: z.string().trim().min(5),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema,
 });
