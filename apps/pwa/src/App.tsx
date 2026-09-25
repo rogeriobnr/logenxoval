@@ -14,6 +14,7 @@ import { PecasScreen } from './screens/PecasScreen';
 import { LogsScreen } from './screens/LogsScreen';
 import { OcrReviewScreen } from './screens/OcrReviewScreen';
 import { EstoqueScreen, type TabEstoque } from './screens/EstoqueScreen';
+import { ReportsScreen } from './screens/ReportsScreen';
 import { ChangePasswordScreen } from './screens/ChangePasswordScreen';
 import { PlaceholderScreen } from './screens/PlaceholderScreen';
 import { Alert } from './components/ui';
@@ -114,6 +115,8 @@ export function App() {
     content = <OcrReviewScreen />;
   } else if (ABA_ESTOQUE[route]) {
     content = <EstoqueScreen inicial={ABA_ESTOQUE[route]} />;
+  } else if (route === '/relatorios') {
+    content = <ReportsScreen />;
   } else if (route === '/senha') {
     content = <ChangePasswordScreen />;
   } else if (PLACEHOLDER[route]) {

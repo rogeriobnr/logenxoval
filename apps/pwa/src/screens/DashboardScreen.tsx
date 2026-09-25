@@ -16,6 +16,7 @@ const MENU: Array<{ label: string; route: string }> = [
   { label: 'EPIs', route: '/epis' },
   { label: 'Solicitações', route: '/solicitacoes' },
   { label: 'Logs', route: '/logs' },
+  { label: 'Relatórios', route: '/relatorios' },
   { label: 'Configurações', route: '/configuracoes' },
 ];
 
