@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: logenxoval
+          POSTGRES_PASSWORD: logenxoval
+          POSTGRES_DB: logenxoval
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U logenxoval"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Build de contratos (dist consumido por server/PWA)
+        run: npm run build -w @logenxoval/contracts
+
+      - name: Typecheck server + API serverless
+        run: |
+          npm run typecheck -w @logenxoval/server
+          npm run typecheck:api
+
+      - name: Testes do servidor (Postgres em serviço)
+        run: npm run test -w @logenxoval/server
+
+      - name: Testes + build do PWA
+        run: |
+          npm run test -w @logenxoval/pwa
+          npm run build -w @logenxoval/pwa
