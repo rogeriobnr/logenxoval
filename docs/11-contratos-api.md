@@ -93,8 +93,8 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 | Método | Rota | Descrição |
 | ------ | ---- | --------- |
 | GET | `/deposits/:id/logs` | filtros (tipo, data, usuário) |
-| GET | `/deposits/:id/snapshots` | pontos de restauração |
-| POST | `/deposits/:id/snapshots/:s/restore` | restaurar (matrícula + motivo; nunca apaga Goldbox) |
+| GET | `/deposits/:id/snapshots` | pontos de restauração (metadados + versão de origem) |
+| POST | `/deposits/:id/snapshots/:s/restore` | restaurar `{motivo, matriculaConfirmacao, pin?}` → `{versao, itens}` — cria nova versão, nunca apaga Goldbox/logs (perfil líder/admin) |
 
 ### Sincronização (Núcleo)
 | Método | Rota | Descrição |

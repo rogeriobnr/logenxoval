@@ -114,6 +114,20 @@ export const importEnxovalBodySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Snapshots / restauração (docs 15)
+// ---------------------------------------------------------------------------
+export const restoreSnapshotBodySchema = z.object({
+  motivo: z.string().trim().min(5),
+  matriculaConfirmacao: matriculaSchema,
+  pin: z.string().optional(),
+});
+
+export const snapshotIdParamSchema = z.object({
+  depositoId: depositoIdSchema,
+  snapshotId: z.string().min(1).max(64),
+});
+
+// ---------------------------------------------------------------------------
 // Goldbox (baixa)
 // ---------------------------------------------------------------------------
 export const baixaBodySchema = z.object({

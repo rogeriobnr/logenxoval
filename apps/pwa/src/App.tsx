@@ -16,12 +16,8 @@ import { OcrReviewScreen } from './screens/OcrReviewScreen';
 import { EstoqueScreen, type TabEstoque } from './screens/EstoqueScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { ChangePasswordScreen } from './screens/ChangePasswordScreen';
-import { PlaceholderScreen } from './screens/PlaceholderScreen';
+import { ConfiguracoesScreen } from './screens/ConfiguracoesScreen';
 import { Alert } from './components/ui';
-
-const PLACEHOLDER: Record<string, string> = {
-  '/configuracoes': 'Configurações',
-};
 
 const ABA_ESTOQUE: Partial<Record<string, TabEstoque>> = {
   '/consumiveis': 'consumiveis',
@@ -119,8 +115,8 @@ export function App() {
     content = <ReportsScreen />;
   } else if (route === '/senha') {
     content = <ChangePasswordScreen />;
-  } else if (PLACEHOLDER[route]) {
-    content = <PlaceholderScreen item={PLACEHOLDER[route]} />;
+  } else if (route === '/configuracoes') {
+    content = <ConfiguracoesScreen />;
   } else {
     content = <DashboardScreen />;
   }

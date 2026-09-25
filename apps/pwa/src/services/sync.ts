@@ -39,6 +39,48 @@ export interface EspelhoResult {
   errosFila: number;
 }
 
+export interface SnapshotListado {
+  id: string;
+  depositoId: string;
+  titulo: string;
+  tipo: 'ANTES' | 'DEPOIS';
+  motivo?: string;
+  matricula: string;
+  dataEm: string;
+  versaoAtual?: string | null;
+}
+
+/** Fase 12: lista os pontos de restauração (metadados) de um depósito. */
+export async function listarSnapshots(api: ApiClient, depositoId: string): Promise<SnapshotListado[]> {
+  const res = await api.request<{ snapshots: SnapshotListado[] }>(
+    'GET',
+    `/deposits/${depositoId}/snapshots`,
+  );
+  return res.snapshots ?? [];
+}
+
+/** Fase 12: restaura o enxoval para o conteúdo do snapshot indicado. */
+export async function restaurarSnapshotV12(
+  api: ApiClient,
+  params: {
+    depositoId: string;
+    snapshotId: string;
+    motivo: string;
+    matriculaConfirmacao: string;
+    pin?: string;
+  },
+): Promise<{ versao: DepositVersionRow; itens: InventoryItemRow[] }> {
+  return api.request<{ versao: DepositVersionRow; itens: InventoryItemRow[] }>(
+    'POST',
+    `/deposits/${params.depositoId}/snapshots/${params.snapshotId}/restore`,
+    {
+      motivo: params.motivo,
+      matriculaConfirmacao: params.matriculaConfirmacao,
+      pin: params.pin,
+    },
+  );
+}
+
 export interface FlushResult {
   enviadas: number;
   erros: number;

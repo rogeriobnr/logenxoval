@@ -14,6 +14,7 @@
 - O usuário salva o arquivo .lxb (fora do aparelho) e guarda a chave/frase.
 - Import: restaura IndexedDB preservando `operationId`s (idempotência mantém consistência com servidor).
 - Sugestão de auto-export semanal + lembrete.
+- ✅ **Fase 12**: `apps/pwa/src/lib/backup.ts` (envelope `v:1` + magic `LOGENXOVAL-BACKUP`); `session`/`kv` ficam de fora — a sessão atual do aparelho é preservada e a fila (`syncQueue`) + `processedOperations` são restaurados com os mesmos `operationId`s. UI em `apps/pwa/src/screens/ConfiguracoesScreen.tsx`.
 
 ## 14.3 Domínio/secretos
 

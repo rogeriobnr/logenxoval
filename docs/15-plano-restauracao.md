@@ -33,6 +33,8 @@ Geração automática ANTES e/ou DEPOIS de:
 7. Solicitar conferência após restauração (recomendado).
 ```
 
+✅ **Fase 12**: implementado em `apps/server/src/services/restoreService.ts` + rotas `GET /deposits/:id/snapshots` e `POST /deposits/:id/snapshots/:s/restore`. O payload do snapshot preserva o `enxoval` com as quantidades do momento (não reinicia para `qtdOficial`). Registra `RESTAURACAO` (estadoAnterior = versão de origem) e um snapshot `DEPOIS` pós-restauração. A UI fica na seção "Restauração de versão" de `ConfiguracoesScreen`.
+
 ## 15.4 Restauração de débito/entregável
 
 - Restauração do dispositivo: ver [14-plano-backup](14-plano-backup.md).

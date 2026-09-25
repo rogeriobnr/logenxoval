@@ -29,7 +29,7 @@
 | 09 | Atualização por foto/PDF/OCR | `feat(phase09): ocr` | ✅ |
 | 10 | Consumíveis e EPIs | `feat(phase10): consumíveis e EPIs` | ✅ |
 | 11 | Relatórios PDF/PNG | `feat(phase11): relatórios` | ✅ |
-| 12 | Espelhos e restauração | `feat(phase12): espelhos e restauração` | ⏳ |
+| 12 | Espelhos e restauração | `feat(phase12): espelhos e restauração` | ✅ |
 | 13 | Testes multi-dispositivo + deploy (GitHub/Vercel/domínio) | `feat(phase13): testes e deploy` | ⏳ |
 
 ## Critério de aceite de cada fase

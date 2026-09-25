@@ -14,6 +14,7 @@ import { registerSpareRoutes } from './routes/spare';
 import { registerLogRoutes } from './routes/logs';
 import { registerDocumentRoutes } from './routes/documents';
 import { registerEstoqueRoutes } from './routes/estoque';
+import { registerSnapshotRoutes } from './routes/snapshots';
 
 export interface AppOptions {
   jwtSecret: string;
@@ -58,6 +59,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await registerLogRoutes(app);
   await registerDocumentRoutes(app);
   await registerEstoqueRoutes(app);
+  await registerSnapshotRoutes(app);
 
   return app;
 }

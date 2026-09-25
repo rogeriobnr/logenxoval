@@ -1,5 +1,17 @@
+import type { SnapshotRow } from '@logenxoval/contracts';
 import { withDepositoContext } from '../db/pool';
 import { newId } from '../lib/crypto';
+
+export interface SnapshotMeta {
+  id: string;
+  depositoId: string;
+  titulo: string;
+  tipo: 'ANTES' | 'DEPOIS';
+  motivo?: string;
+  matricula: string;
+  dataEm: string;
+  versaoAtual?: string | null;
+}
 
 export interface CriarSnapshotParams {
   depositoId: string;
@@ -8,6 +20,58 @@ export interface CriarSnapshotParams {
   motivo?: string;
   usuarioId: string;
   matricula: string;
+}
+
+function mapSnapshot(row: Record<string, unknown>): SnapshotRow {
+  return {
+    id: row.id as string,
+    depositoId: row.deposito_id as string,
+    titulo: row.titulo as string,
+    tipo: row.tipo as SnapshotRow['tipo'],
+    motivo: row.motivo as string | undefined,
+    usuarioId: row.usuario_id as string,
+    matricula: row.matricula as string,
+    dataEm: (row.data_em as Date).toISOString(),
+    payload: row.payload as unknown,
+  };
+}
+
+/** Lista os pontos de restauração de um depósito (metadados, sem payload). */
+export async function listSnapshots(depositoId: string, perfil: string): Promise<SnapshotMeta[]> {
+  return withDepositoContext(depositoId, perfil, async (client) => {
+    const res = await client.query(
+      `SELECT id, deposito_id, titulo, tipo, motivo, matricula, data_em,
+              payload->>'versaoAtual' AS versao_atual
+       FROM snapshots WHERE deposito_id = $1 ORDER BY data_em DESC`,
+      [depositoId],
+    );
+    return (res as { rows: Array<Record<string, unknown>> }).rows.map((row) => ({
+      id: row.id as string,
+      depositoId: row.deposito_id as string,
+      titulo: row.titulo as string,
+      tipo: row.tipo as SnapshotMeta['tipo'],
+      motivo: row.motivo as string | undefined,
+      matricula: row.matricula as string,
+      dataEm: (row.data_em as Date).toISOString(),
+      versaoAtual: row.versao_atual as string | null | undefined,
+    }));
+  });
+}
+
+/** Carrega um snapshot completo (payload) para restauração. */
+export async function findSnapshot(
+  depositoId: string,
+  snapshotId: string,
+  perfil: string,
+): Promise<SnapshotRow | null> {
+  return withDepositoContext(depositoId, perfil, async (client) => {
+    const res = await client.query(
+      `SELECT * FROM snapshots WHERE deposito_id = $1 AND id = $2`,
+      [depositoId, snapshotId],
+    );
+    const row = (res as { rows: Array<Record<string, unknown>> }).rows[0];
+    return row ? mapSnapshot(row) : null;
+  });
 }
 
 export async function criarSnapshot(

@@ -4,18 +4,18 @@
  */
 
 const enc = new TextEncoder();
-const ITERACOES = 100_000;
+export const ITERACOES = 100_000;
 
-function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
+export function bytesToBase64(bytes: ArrayBuffer | Uint8Array): string {
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let bin = '';
   for (const b of u8) bin += String.fromCharCode(b);
   return btoa(bin);
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
   const bin = atob(b64);
-  const u8 = new Uint8Array(bin.length);
+  const u8 = new Uint8Array(bin.length) as Uint8Array<ArrayBuffer>;
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
   return u8;
 }
