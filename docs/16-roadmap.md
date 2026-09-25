@@ -3,8 +3,8 @@
 ## Hosting definitivo (decidido)
 
 - **GitHub**: repositório (você autentica `gh auth login`; eu commit por fase).
-- **Vercel**: app PWA (static) + API (Fastify serverless) no mesmo projeto/monorepo, com seu domínio. **O servidor roda na nuvem da Vercel — seu notebook desligado não afeta nada.**
-- **PostgreSQL**: postgres **gerenciado** na nuvem (Supabase ou Neon) com `DATABASE_URL` de pool (connection pooling) + RLS. Local: Docker na porta 5433.
+- **Vercel**: app PWA (static) + API (Fastify serverless) no mesmo projeto/monorepo. **O servidor roda na nuvem da Vercel — seu notebook desligado não afeta nada.** Subdomínio grátis `logenxoval.vercel.app` (domínio próprio pode ser adicionado depois).
+- **PostgreSQL**: postgres **gerenciado** na nuvem via **Neon** (tier grátis, 0,5 GB, connection pooling, SSL). Local: Docker na porta 5433.
 
 ## Estratégia git/github
 
@@ -30,7 +30,7 @@
 | 10 | Consumíveis e EPIs | `feat(phase10): consumíveis e EPIs` | ✅ |
 | 11 | Relatórios PDF/PNG | `feat(phase11): relatórios` | ✅ |
 | 12 | Espelhos e restauração | `feat(phase12): espelhos e restauração` | ✅ |
-| 13 | Testes multi-dispositivo + deploy (GitHub/Vercel/domínio) | `feat(phase13): testes e deploy` | ⏳ |
+| 13 | Testes multi-dispositivo + deploy (GitHub/Vercel/domínio) | `feat(phase13): testes e deploy` | ✅ |
 
 ## Critério de aceite de cada fase
 

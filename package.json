@@ -2,6 +2,7 @@
   "name": "logenxoval",
   "private": true,
   "version": "0.0.0",
+  "type": "module",
   "description": "LogEnxoval — PWA offline-first de controle do enxoval de caminhões-oficina",
   "workspaces": [
     "packages/*",
@@ -14,7 +15,11 @@
     "test": "npm run test -w @logenxoval/server && npm run test -w @logenxoval/pwa",
     "dev:server": "npm run dev -w @logenxoval/server",
     "dev:pwa": "npm run dev -w @logenxoval/pwa",
-    "start:db": "docker compose up -d db"
+    "start:db": "docker compose up -d db",
+    "build:cloud": "npm run build -w @logenxoval/contracts && npm run build -w @logenxoval/server && npm run typecheck:api && npm run build -w @logenxoval/pwa && npm run migrate:cloud && npm run seed:cloud",
+    "migrate:cloud": "npx tsx apps/server/src/db/migrate.ts",
+    "seed:cloud": "npx tsx apps/server/src/db/seed.ts",
+    "typecheck:api": "npx tsc -p tsconfig.api.json"
   },
   "engines": {
     "node": ">=20"

@@ -31,3 +31,5 @@ Thumbs.db
 
 # Tesseract.js downloads em build local (quando ativado)
 apps/pwa/node_modules/.cache/
+.vercel
+.env*

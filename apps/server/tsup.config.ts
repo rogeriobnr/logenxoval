@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/serverlessApp.ts'],
   format: ['esm'],
   target: 'node20',
   sourcemap: true,
@@ -10,4 +10,5 @@ export default defineConfig({
   bundle: true,
   platform: 'node',
   external: [],
+  dts: true,
 });
