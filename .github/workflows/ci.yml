@@ -29,7 +29,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Instalar dependências
@@ -37,6 +37,9 @@ jobs:
 
       - name: Build de contratos (dist consumido por server/PWA)
         run: npm run build -w @logenxoval/contracts
+
+      - name: Build do server (dist + tipos consumidos por api/index.ts)
+        run: npm run build -w @logenxoval/server
 
       - name: Typecheck server + API serverless
         run: |
