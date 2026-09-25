@@ -361,10 +361,11 @@ CREATE TABLE IF NOT EXISTS snapshots (
 );
 
 CREATE TABLE IF NOT EXISTS settings (
+  id           SERIAL PRIMARY KEY,
   chave        TEXT NOT NULL,
   valor        JSONB,
   deposito_id  TEXT,
-  PRIMARY KEY (chave, deposito_id)
+  CONSTRAINT settings_chave_deposito_uq UNIQUE (chave, deposito_id)
 );
 
 -- ---------------------------------------------------------------------------
