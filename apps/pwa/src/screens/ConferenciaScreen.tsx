@@ -410,11 +410,12 @@ const abrirCorrecao = (item: InspectionItemRow) => {
                   <div className="list-sub">{item.textoBreve}</div>
                   <div className="list-sub">
                     {conferido
-                      ? `sistema ${item.qtdAtual} ${item.unidadeMedida ?? ''} · física ${qtdFisica} ${item.unidadeMedida ?? ''}`
-                      : `sistema ${item.qtdAtual} ${item.unidadeMedida ?? ''} — aguardando conferência`}
+                      ? `lançado ${item.qtdOficial} · após baixas ${item.qtdAtual} ${item.unidadeMedida ?? ''} · física ${qtdFisica} ${item.unidadeMedida ?? ''}`
+                      : `lançado ${item.qtdOficial} · após baixas ${item.qtdAtual} ${item.unidadeMedida ?? ''} — aguardando conferência`}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
+                  {conferido && qtdFisica < item.qtdAtual && <span className="chip warn">pendência de baixa</span>}
                   <Btn
                     variant={conferido ? (status === 'DIVERGENTE' ? 'danger' : 'primary') : 'ghost'}
                     className="small"
@@ -523,13 +524,14 @@ const abrirCorrecao = (item: InspectionItemRow) => {
                 <div style={{ flex: 1 }}>
                   <div className="list-title">{i.codigoSap} {i.corregido ? '· corrigido ✓' : ''}</div>
                   <div className="list-sub">
-                    sistema {i.qtdSistema} · física {i.qtdFisica} · diferença {i.diferenca > 0 ? '+' : ''}{i.diferenca}
+                    lançado {i.qtdOficial} · após baixas {i.qtdSistema} · física {i.qtdFisica} · diferença {i.diferenca > 0 ? '+' : ''}{i.diferenca}
                   </div>
                   {i.ultimaBaixaGoldbox && (
                     <div className="list-sub">última baixa goldbox: {new Date(i.ultimaBaixaGoldbox.dataHora).toLocaleDateString('pt-BR')} ({i.ultimaBaixaGoldbox.quantidade})</div>
                   )}
                   {i.reposicaoPosterior && <div className="list-sub">reposição posterior à conferência</div>}
                   {i.reposicaoPendente && <div className="list-sub warn">reposição pendente (almoxarifado)</div>}
+                  {i.pendenciaBaixa && <div className="list-sub warn">pendência de baixa — físico abaixo do sistema</div>}
                   {typeof i.sparePartDisponivel === 'number' && i.sparePartDisponivel > 0 && (
                     <div className="list-sub">peça avulsa disponível: {i.sparePartDisponivel}</div>
                   )}
@@ -564,7 +566,7 @@ const abrirCorrecao = (item: InspectionItemRow) => {
         title={`Correção de ${corrigirAlvo?.codigoSap ?? ''}`}
         message={
           corrigirAlvo
-            ? `sistema ${corrigirAlvo.qtdSistema} · física ${corrigirAlvo.qtdFisica} · diferença ${corrigirAlvo.diferenca}`
+            ? `lançado ${corrigirAlvo.qtdOficial} · sistema ${corrigirAlvo.qtdSistema} · física ${corrigirAlvo.qtdFisica} · diferença ${corrigirAlvo.diferenca}`
             : undefined
         }
         confirmLabel="Confirmar correção"

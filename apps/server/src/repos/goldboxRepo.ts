@@ -150,6 +150,31 @@ export async function aplicarBaixa(params: {
       });
     }
 
+    // Baixa marcada como "é reposição" → item entra na lista de aguardando
+    // reposição (divergência REPOSICAO ABERTA, resolvida pela entrada).
+    if (params.reposicao) {
+      const jaExiste = await client.query(
+        `SELECT 1 FROM divergences
+         WHERE deposito_id = $1 AND codigo_sap = $2 AND tipo = 'REPOSICAO' AND status = 'ABERTA' LIMIT 1`,
+        [params.depositoId, params.codigoSap],
+      );
+      if (!rowsOf(jaExiste)[0]) {
+        await client.query(
+          `INSERT INTO divergences
+            (id, deposito_id, codigo_sap, tipo, quantidade, status, origem_operation_id, criado_em, criado_por)
+           VALUES ($1,$2,$3,'REPOSICAO',$4,'ABERTA',$5,now(),$6)`,
+          [
+            newId(),
+            params.depositoId,
+            params.codigoSap,
+            params.quantidade,
+            params.operationId,
+            params.matricula,
+          ],
+        );
+      }
+    }
+
     await client.query(
       `INSERT INTO processed_operations (operation_id, entidade, acao, payload_hash, processado_em, resultado)
        VALUES ($1,'goldbox_movements','CREATE',$2,now(),$3::jsonb)`,

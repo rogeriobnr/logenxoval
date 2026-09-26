@@ -135,8 +135,12 @@ describe('fase06 - conferência física', () => {
       assert.equal(d1.status, 'DIVERGENTE');
       assert.equal(d1.diferenca, -2);
       assert.equal(d1.qtdSistema, 10);
+      assert.equal(d1.qtdOficial, 10);
+      assert.equal(d1.pendenciaBaixa, true); // físico 8 < sistema 10
       assert.equal(d2.status, 'DIVERGENTE');
       assert.equal(d2.diferenca, 2);
+      assert.equal(d2.qtdOficial, 1);
+      assert.equal(d2.pendenciaBaixa, false); // físico 3 > sistema 1
       item121Id = d1.id;
       item122Id = d2.id;
     });

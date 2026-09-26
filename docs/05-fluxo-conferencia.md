@@ -5,13 +5,14 @@
 Por item exibe:
 
 - Código SAP + descrição.
-- Quantidade no sistema (`qtdAtual`).
+- Quantidade do **enxoval lançado** (`qtdOficial`) e o valor **após baixas anteriores** (`qtdAtual`).
 - Campo de quantidade física.
 - Diferença (computada ao vivo).
 - Status (OK / DIVERGENTE / PENDENTE).
 - Última baixa do Goldbox (data + qtd).
 - Se houve reposição depois da baixa.
 - Se há reposição pendente.
+- Se o físico ficou abaixo do sistema → marcado como **pendência de baixa**.
 
 ## 5.2 Interações
 
@@ -33,7 +34,7 @@ Campos:
 
 ## 5.4 Registro da conferência
 
-`inspections` + `inspection_items` conforme modelo. Grava `qtdSistema`, `qtdFisica`, `diferenca`, autor/matrícula, data/hora, status, observação, tipo de correção.
+`inspections` + `inspection_items` conforme modelo. Grava `qtdSistema` (valor após baixas anteriores), `qtdOficial` (enxoval lançado), `qtdFisica`, `diferenca`, autor/matrícula, data/hora, status, observação, tipo de correção. Quando `qtdFisica < qtdSistema`, o item é marcado como **pendência de baixa** (`pendenciaBaixa`) — a baixa do material ausente ainda precisa ser registrada no Goldbox.
 
 - Qualquer usuário (inclusive mecânico) pode conferir e propor correção.
 

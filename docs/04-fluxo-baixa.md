@@ -10,6 +10,7 @@
   3. audit log;
   4. pendência de conferência/reposição.
 - `reposicao` (sim/não) é campo obrigatório da baixa.
+- **Baixa com "é reposição"** alimenta a lista de **aguardando reposição**: cria (uma única vez por item com pendência aberta) `divergences` tipo `REPOSICAO`, status `ABERTA`, debitada do item na baixa. A entrada de material (docs 16) resolve essa pendência.
 
 ## 4.2 Passos (tela única com etapas)
 

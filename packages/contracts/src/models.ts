@@ -187,6 +187,14 @@ export interface PpeMovementRow {
   motivo?: string;
 }
 
+export interface SolicitacaoItem {
+  qtd: number;
+  descricao: string;
+  codigo: string;
+  /** Preenchido na transição para RECEBIDA: marca se o item foi (ou não) recebido. */
+  recebido?: boolean;
+}
+
 export interface RequestRow {
   id: string;
   depositoId: string;
@@ -195,7 +203,7 @@ export interface RequestRow {
   matricula: string;
   status: RequestStatus;
   dataEm: ISO;
-  itens: Array<{ qtd: number; descricao: string; codigo: string }>;
+  itens: SolicitacaoItem[];
 }
 
 export interface InspectionRow {
@@ -218,6 +226,8 @@ export interface InspectionItemRow {
   depositoId: string;
   codigoSap: string;
   materialId?: string;
+  /** Quantidade do enxoval lançado (qtdOficial) na versão conferida. */
+  qtdOficial: number;
   qtdSistema: number;
   qtdFisica: number;
   diferenca: number;
@@ -226,6 +236,8 @@ export interface InspectionItemRow {
   ultimaBaixaGoldbox?: { operationId: string; dataHora: ISO; quantidade: number };
   reposicaoPosterior?: boolean;
   reposicaoPendente?: boolean;
+  /** Físico menor que o sistema → falta registrar a baixa do material ausente. */
+  pendenciaBaixa?: boolean;
   corregido: boolean;
   correcaoRef?: OperationId;
 }

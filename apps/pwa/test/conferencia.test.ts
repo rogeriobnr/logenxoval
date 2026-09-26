@@ -9,6 +9,7 @@ function item(over: Partial<InspectionItemRow> = {}): InspectionItemRow {
     inspectionId: 'ins',
     depositoId: 'd1',
     codigoSap: '1002341',
+    qtdOficial: 10,
     qtdSistema: 10,
     qtdFisica: 8,
     diferenca: -2,

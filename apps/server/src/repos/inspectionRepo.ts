@@ -46,6 +46,7 @@ function mapItem(row: Record<string, unknown>): InspectionItemRow {
     depositoId: row.deposito_id as string,
     codigoSap: row.codigo_sap as string,
     materialId: (row.material_id as string | null) ?? undefined,
+    qtdOficial: Number(row.qtd_oficial ?? row.qtd_sistema),
     qtdSistema: Number(row.qtd_sistema),
     qtdFisica: Number(row.qtd_fisica),
     diferenca: Number(row.diferenca),
@@ -60,6 +61,7 @@ function mapItem(row: Record<string, unknown>): InspectionItemRow {
       : undefined,
     reposicaoPosterior: Boolean(row.reposicao_posterior),
     reposicaoPendente: Boolean(row.reposicao_pendente),
+    pendenciaBaixa: Boolean(row.pendencia_baixa),
     corregido: Boolean(row.corregido),
     correcaoRef: (row.correcao_ref as string | null) ?? undefined,
   };
@@ -192,27 +194,30 @@ export async function criarConferencia(params: {
 
     for (const item of params.itens) {
       const qtdRes = await client.query(
-        `SELECT qtd_atual FROM inventory_items
+        `SELECT qtd_atual, qtd_oficial FROM inventory_items
          WHERE deposito_id = $1 AND codigo_sap = $2 AND versao = $3 LIMIT 1`,
         [params.depositoId, item.codigoSap, versao],
       );
-      const qtdSistema = Number(rowsOf(qtdRes)[0]?.qtd_atual ?? 0);
+      const inv = rowsOf(qtdRes)[0];
+      const qtdSistema = Number(inv?.qtd_atual ?? 0);
+      const qtdOficial = Number(inv?.qtd_oficial ?? qtdSistema);
       const diferenca = item.qtdFisica - qtdSistema;
       const ctx = baixas.get(item.codigoSap);
       const materialId = await materialDoItem(client, params.depositoId, item.codigoSap, versao);
       const itemId = newId();
       await client.query(
         `INSERT INTO inspection_items
-          (id, inspection_id, deposito_id, codigo_sap, material_id, qtd_sistema, qtd_fisica,
-           diferenca, status, observacao, ultima_baixa_goldbox, reposicao_posterior,
-           reposicao_pendente, corregido)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,false)`,
+          (id, inspection_id, deposito_id, codigo_sap, material_id, qtd_oficial, qtd_sistema,
+           qtd_fisica, diferenca, status, observacao, ultima_baixa_goldbox, reposicao_posterior,
+           reposicao_pendente, pendencia_baixa, corregido)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14,$15,false)`,
         [
           itemId,
           inspecaoId,
           params.depositoId,
           item.codigoSap,
           materialId ?? null,
+          qtdOficial,
           qtdSistema,
           item.qtdFisica,
           diferenca,
@@ -221,6 +226,7 @@ export async function criarConferencia(params: {
           ctx ? JSON.stringify(ctx.ultima) : null,
           Boolean(ctx?.reposicaoPosterior),
           pendentes.has(item.codigoSap),
+          item.qtdFisica < qtdSistema,
         ],
       );
     }
