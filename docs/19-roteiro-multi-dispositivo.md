@@ -33,7 +33,11 @@ Dispositivo B = notebook. Duração estimada: 45–75 min.
    1002342|Calça Sarja|15|UN
    1002343|Botina Couro|6|PAR
    ```
-8. **Login nos dois aparelhos**: A e B com `MEC-1002`. Confira em **Logs** que o login
+8. **Auto-cadastro (opcional)**: na tela de login de um aparelho, aba **Criar conta** —
+   crie `MEC-1004` (perfil **MECÂNICO**). Na tela **Usuários** do admin, o card mostra
+   "aguardando aprovação"; use **Ativar** e depois designe o depósito a ele (item 6).
+   Sem aprovação, tentar logar dá "Usuário aguardando aprovação do administrador" (403).
+9. **Login nos dois aparelhos**: A e B com `MEC-1002`. Confira em **Logs** que o login
    de cada aparelho ficou registrado.
 
 ---

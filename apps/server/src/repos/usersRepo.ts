@@ -9,16 +9,18 @@ export async function createUser(params: {
   sobrenome: string;
   perfil: Perfil;
   senhaHash: string;
+  status?: UserStatus;
 }): Promise<UserRow> {
   const pool = getPool();
   const id = newId();
   const now = new Date().toISOString();
+  const status = params.status ?? 'ATIVO';
   try {
     const { rows } = await pool.query(
-      `INSERT INTO users (id, matricula, nome, sobrenome, perfil, senha_hash, criado_em, atualizado_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO users (id, matricula, nome, sobrenome, perfil, senha_hash, status, criado_em, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
-      [id, params.matricula, params.nome, params.sobrenome, params.perfil, params.senhaHash, now, now],
+      [id, params.matricula, params.nome, params.sobrenome, params.perfil, params.senhaHash, status, now, now],
     );
     return mapUser(rows[0]);
   } catch (err) {

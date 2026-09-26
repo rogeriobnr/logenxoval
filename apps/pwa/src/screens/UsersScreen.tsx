@@ -210,7 +210,8 @@ export function UsersScreen() {
                   {u.nome} {u.sobrenome} · {u.matricula}
                 </div>
                 <div className="list-sub">
-                  {u.perfil} · {u.status === 'ATIVO' ? 'ativo' : 'bloqueado'}
+                  {u.perfil} ·{' '}
+                  {u.status === 'ATIVO' ? 'ativo' : u.status === 'PENDENTE' ? 'aguardando aprovação' : 'bloqueado'}
                   {(u.depositoIds?.length ?? 0) > 0
                     ? ` · ${u.depositoIds!.length} depósito(s) designado(s)`
                     : ''}

@@ -53,6 +53,9 @@ export async function login(opts: {
   const user = await findByMatricula(opts.matricula.trim());
   if (!user) throw new AppError('UNAUTHORIZED', 'Matrícula ou senha inválidos', 401);
   if (user.status === 'BLOQUEADO') throw new AppError('PERMISSAO_NEGADA', 'Usuário bloqueado', 403);
+  if (user.status === 'PENDENTE') {
+    throw new AppError('PERMISSAO_NEGADA', 'Usuário aguardando aprovação do administrador', 403);
+  }
 
   const ok = await bcrypt.compare(opts.senha, user.senhaHash);
   if (!ok) throw new AppError('UNAUTHORIZED', 'Matrícula ou senha inválidos', 401);
@@ -131,8 +134,8 @@ export async function refresh(opts: {
     throw new AppError('UNAUTHORIZED', 'Sessão expirada', 401);
   }
   const user = await findById(session.userId);
-  if (!user || user.status === 'BLOQUEADO') {
-    throw new AppError('PERMISSAO_NEGADA', 'Usuário bloqueado', 403);
+  if (!user || user.status !== 'ATIVO') {
+    throw new AppError('PERMISSAO_NEGADA', 'Usuário bloqueado ou pendente de aprovação', 403);
   }
   const newRefresh = newToken(32);
   await upsertSession({
@@ -170,6 +173,36 @@ export async function changePassword(opts: {
     "UPDATE users SET senha_hash = $2 WHERE id = $1",
     [opts.userId, novoHash],
   );
+}
+
+export async function publicoRegistrarUsuario(opts: {
+  nome: string;
+  sobrenome: string;
+  matricula: string;
+  senha: string;
+  perfil: Perfil;
+  dispositivo?: string;
+}): Promise<ReturnType<typeof createUser>> {
+  const senhaHash = await bcrypt.hash(opts.senha, 12);
+  const user = await createUser({
+    matricula: opts.matricula,
+    nome: opts.nome,
+    sobrenome: opts.sobrenome,
+    perfil: opts.perfil,
+    senhaHash,
+    status: 'PENDENTE',
+  });
+  await insertAuditLog({
+    tipo: 'CADASTRO_USUARIO',
+    usuarioId: user.id,
+    matricula: user.matricula,
+    entidade: 'users',
+    operacaoId: user.id,
+    estadoPosterior: { matricula: user.matricula, perfil: user.perfil, status: user.status },
+    origem: 'ONLINE',
+    dispositivo: opts.dispositivo ? `self-service (${opts.dispositivo})` : 'self-service',
+  });
+  return user;
 }
 
 export async function adminCreateUser(opts: {

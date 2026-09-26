@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import { loginBodySchema, logoutBodySchema, refreshBodySchema, changePasswordBodySchema } from '@logenxoval/contracts';
+import { loginBodySchema, logoutBodySchema, refreshBodySchema, changePasswordBodySchema, registerUserBodySchema } from '@logenxoval/contracts';
 import { authenticate } from '../plugins/auth';
 import { validateBody } from '../lib/validator';
 import { AppError } from '../lib/errors';
@@ -26,6 +26,33 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         dispositivo: deviceId,
         deps: { jwtSign },
       });
+    },
+  );
+
+  app.post(
+    '/auth/register',
+    { ...validateBody(registerUserBodySchema) },
+    async (req) => {
+      const body = req.body as typeof registerUserBodySchema._type;
+      const user = await authService.publicoRegistrarUsuario({
+        nome: body.nome,
+        sobrenome: body.sobrenome,
+        matricula: body.matricula,
+        senha: body.senha,
+        perfil: body.perfil,
+        dispositivo: (req.headers['x-device-id'] as string) ?? undefined,
+      });
+      return {
+        usuario: {
+          id: user.id,
+          matricula: user.matricula,
+          nome: user.nome,
+          sobrenome: user.sobrenome,
+          perfil: user.perfil,
+          status: user.status,
+        },
+        mensagem: 'Cadastro recebido. Um administrador precisa aprovar antes do primeiro login.',
+      };
     },
   );
 

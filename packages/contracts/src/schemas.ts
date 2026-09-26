@@ -59,6 +59,15 @@ export const updateUserBodySchema = z.object({
   perfil: z.enum([PERFIL.MECANICO, PERFIL.LIDER, PERFIL.ADMIN]).optional(),
 });
 
+/** Cadastro público (auto-atendimento): nasce PENDENTE até aprovação do admin. */
+export const registerUserBodySchema = z.object({
+  nome: z.string().trim().min(2),
+  sobrenome: z.string().trim().min(2),
+  matricula: matriculaSchema,
+  senha: z.string().min(8),
+  perfil: z.enum([PERFIL.MECANICO, PERFIL.LIDER]),
+});
+
 export const grantUserDepositBodySchema = z.object({
   depositoId: depositoIdSchema,
   matriculaConfirmacao: matriculaSchema,

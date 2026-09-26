@@ -8,6 +8,7 @@ export type Perfil = (typeof PERFIL)[keyof typeof PERFIL];
 export const USER_STATUS = {
   ATIVO: 'ATIVO',
   BLOQUEADO: 'BLOQUEADO',
+  PENDENTE: 'PENDENTE',
 } as const;
 export type UserStatus = (typeof USER_STATUS)[keyof typeof USER_STATUS];
 
@@ -125,6 +126,7 @@ export const LOG_TIPO = {
   LOGOUT: 'LOGOUT',
   BLOQUEIO_INATIVIDADE: 'BLOQUEIO_INATIVIDADE',
   TROCA_USUARIO: 'TROCA_USUARIO',
+  CADASTRO_USUARIO: 'CADASTRO_USUARIO',
   CRIACAO_USUARIO: 'CRIACAO_USUARIO',
   EDICAO_USUARIO: 'EDICAO_USUARIO',
   BAIXA: 'BAIXA',
