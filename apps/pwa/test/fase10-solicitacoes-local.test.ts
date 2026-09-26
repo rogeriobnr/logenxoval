@@ -39,9 +39,19 @@ test('espelhos locais de consumíveis, EPIs e solicitações (fase 10)', async (
       tipo: 'CONSUMIVEL',
       solicitanteId: 'u1',
       matricula: 'F10-MEC',
-      status: 'PRONTA_PARA_ENVIO',
+      status: 'ENVIADA',
       dataEm: '2026-09-23T10:00:00.000Z',
       itens: [{ qtd: 4, codigo: 'LUVA-40', descricao: 'Luvas' }],
+    },
+    {
+      id: 'r-excluida',
+      depositoId: 'd1',
+      tipo: 'CONSUMIVEL',
+      solicitanteId: 'u-admin',
+      matricula: 'F10-LDR',
+      status: 'EXCLUIDA',
+      dataEm: '2026-09-23T09:00:00.000Z',
+      itens: [{ qtd: 1, codigo: 'AD-ISOL', descricao: 'Adesivo' }],
     },
   ]);
 
@@ -49,7 +59,7 @@ test('espelhos locais de consumíveis, EPIs e solicitações (fase 10)', async (
   assert.equal((await listPpeLocal('d1'))[0].codigo, 'CAP-5');
   const reqs = await listRequestsLocal('d1');
   assert.equal(reqs.length, 1);
-  assert.equal(reqs[0].status, 'PRONTA_PARA_ENVIO');
+  assert.equal(reqs[0].status, 'ENVIADA');
 });
 
 test('registrarSolicitacaoOffline: espelho id local + fila SOLICITACAO', async () => {
@@ -106,13 +116,13 @@ test('registrarTransicaoSolicitacaoOffline: atualiza espelho + fila SOLICITACAO_
     operationId: op,
     depositoId: 'd1',
     requestId: 'r1',
-    para: 'PRONTA_PARA_ENVIO',
+    para: 'ENVIADA',
     assinaturaMatricula: 'F10-MEC',
   });
 
   const [req] = await listRequestsLocal('d1');
   assert.equal(req.id, 'r1');
-  assert.equal(req.status, 'PRONTA_PARA_ENVIO');
+  assert.equal(req.status, 'ENVIADA');
 
   const fila = await filaDoDeposito('d1');
   assert.equal(fila.length, 1);
@@ -120,9 +130,45 @@ test('registrarTransicaoSolicitacaoOffline: atualiza espelho + fila SOLICITACAO_
   assert.deepEqual(fila[0].payload, {
     depositoId: 'd1',
     requestId: 'r1',
-    para: 'PRONTA_PARA_ENVIO',
+    para: 'ENVIADA',
     motivo: undefined,
+    naoRecebidos: undefined,
     pin: undefined,
     assinaturaMatricula: 'F10-MEC',
   });
+});
+
+test('registrarTransicaoSolicitacaoOffline: RECEBIDA marca itens não recebidos no espelho', async () => {
+  await upsertRequests([
+    {
+      id: 'r2',
+      depositoId: 'd1',
+      tipo: 'CONSUMIVEL',
+      solicitanteId: 'u1',
+      matricula: 'F10-MEC',
+      status: 'ENVIADA',
+      dataEm: '2026-09-23T10:00:00.000Z',
+      itens: [
+        { qtd: 4, codigo: 'LUVA-40', descricao: 'Luvas' },
+        { qtd: 2, codigo: 'AD-ISOL', descricao: 'Adesivo' },
+      ],
+    },
+  ]);
+  await registrarTransicaoSolicitacaoOffline({
+    operationId: crypto.randomUUID(),
+    depositoId: 'd1',
+    requestId: 'r2',
+    para: 'RECEBIDA',
+    naoRecebidos: ['AD-ISOL'],
+    assinaturaMatricula: 'F10-LDR',
+  });
+
+  const [req] = await listRequestsLocal('d1');
+  assert.equal(req.status, 'RECEBIDA');
+  assert.equal(req.itens[0].recebido, true);
+  assert.equal(req.itens[1].recebido, false);
+
+  const fila = await filaDoDeposito('d1');
+  assert.equal(fila[0].entidade, 'SOLICITACAO_TRANSICAO');
+  assert.deepEqual((fila[0].payload as { naoRecebidos?: string[] }).naoRecebidos, ['AD-ISOL']);
 });

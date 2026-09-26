@@ -70,7 +70,7 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 | GET | `/deposits/:id/ppe/:p/movements` | movimentos do EPI |
 | GET | `/deposits/:id/requests` | solicitações (mecânico vê as próprias; líder vê todas) |
 | POST | `/deposits/:id/requests` | criar solicitação (`{operationId, tipo: CONSUMIVEL\|EPI, itens[], assinaturaMatricula}`) |
-| POST | `/deposits/:id/requests/:rid/transition` | transição de status (`{operationId, para, motivo?, pin?, assinaturaMatricula}`) |
+| POST | `/deposits/:id/requests/:rid/transition` | transição de status (`{operationId, para: ENVIADA\|RECEBIDA\|EXCLUIDA, naoRecebidos?, motivo?, assinaturaMatricula}`) — RECEBIDA aceita `naoRecebidos[]` (códigos não recebidos) |
 
 ### Conferências
 | Método | Rota | Descrição |

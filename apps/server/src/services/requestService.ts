@@ -1,13 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import type { Perfil, RequestStatus, SolicitacaoTipo } from '@logenxoval/contracts';
-import { podeExecutar } from '../domain/permissions';
 import { AppError } from '../lib/errors';
 import {
   criarSolicitacao,
   obterSolicitacao,
   transicionarSolicitacao,
 } from '../repos/requestRepo';
-import { verificarPinDoUsuario } from '../plugins/auth';
 
 export interface RequestServiceDeps {
   app: FastifyInstance;
@@ -59,19 +57,15 @@ export async function registrarSolicitacao(
 }
 
 /**
- * Regras de transição (docs 11.4 / matriz 09):
- * - RASCUNHO/PRONTA_PARA_ENVIO: somente o dono (marcar pronta / enviar / cancelar).
- * - ENVIADA → RECEBIDA_PELA_LIDERANCA: somente LIDER/ADMIN.
- * - APROVADA/ATENDIDA: somente LIDER/ADMIN + PIN administrativo.
- * - Qualquer perfil pode cancelar a própria solicitação antes de enviada.
+ * Regras de transição (fluxo simplificado de solicitações):
+ * - ENVIADA: somente o dono marca como enviada após compartilhar.
+ * - RECEBIDA: o dono ou a liderança marca o recebimento (com itens não recebidos).
+ * - EXCLUIDA: o dono ou a liderança exclui a solicitação.
  */
-const TRANSICOES: Record<string, { podeDono?: boolean; acao?: 'APROVAR_SOLICITACAO'; precisaPin?: boolean; podeLider?: boolean }> = {
-  PRONTA_PARA_ENVIO: { podeDono: true },
+const TRANSICOES: Record<string, { podeDono?: boolean; podeLider?: boolean }> = {
   ENVIADA: { podeDono: true },
-  RECEBIDA_PELA_LIDERANCA: { podeLider: true },
-  APROVADA: { acao: 'APROVAR_SOLICITACAO', precisaPin: true },
-  ATENDIDA: { acao: 'APROVAR_SOLICITACAO', precisaPin: true },
-  CANCELADA: { podeDono: true, podeLider: true },
+  RECEBIDA: { podeDono: true, podeLider: true },
+  EXCLUIDA: { podeDono: true, podeLider: true },
 };
 
 export async function transicionarSolicitacaoService(
@@ -82,6 +76,7 @@ export async function transicionarSolicitacaoService(
     requestId: string;
     para: RequestStatus;
     motivo?: string;
+    naoRecebidos?: string[];
     pin?: string;
     assinaturaMatricula: string;
     matriculaConfirmacao?: string;
@@ -94,23 +89,15 @@ export async function transicionarSolicitacaoService(
     throw new AppError('VALIDATION_FAILED', `Transição para ${params.para} não suportada`, 400);
   }
 
-  if (regras.acao) {
-    if (!podeExecutar(deps.authUser.perfil, regras.acao)) {
-      throw new AppError('PERMISSAO_NEGADA', 'Aprovar/atender solicitação exige LIDER/ADMIN', 403);
-    }
-    if (regras.precisaPin) await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
-  }
-
   const solicitacao = await obterSolicitacao(params.depositoId, deps.authUser.perfil, params.requestId);
   if (!solicitacao) {
     throw new AppError('NAO_ENCONTRADO', 'Solicitação não encontrada', 404);
   }
   const dono = solicitacao.solicitanteId === deps.authUser.sub;
-  if (regras.podeDono && !dono) {
-    throw new AppError('PERMISSAO_NEGADA', 'Somente o solicitante pode executar esta transição', 403);
-  }
-  if (regras.podeLider && !regras.podeDono && deps.authUser.perfil === 'MECANICO') {
-    throw new AppError('PERMISSAO_NEGADA', 'Somente liderança pode executar esta transição', 403);
+  const lideranca = deps.authUser.perfil !== 'MECANICO';
+  const autorizado = (regras.podeDono && dono) || (regras.podeLider && lideranca);
+  if (!autorizado) {
+    throw new AppError('PERMISSAO_NEGADA', 'Você não pode executar esta transição nesta solicitação', 403);
   }
 
   return transicionarSolicitacao({
@@ -122,6 +109,7 @@ export async function transicionarSolicitacaoService(
     requestId: params.requestId,
     para: params.para,
     motivo: params.motivo,
+    naoRecebidos: params.naoRecebidos,
     assinaturaMatricula: params.assinaturaMatricula,
     origemMov: deps.origem,
     dispositivo: deps.dispositivo,

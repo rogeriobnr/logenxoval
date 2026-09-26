@@ -317,6 +317,7 @@ export const requestItemSchema = z.object({
   codigo: z.string().trim().min(1).max(40),
   descricao: z.string().trim().max(200).optional(),
   qtd: z.number().int().positive(),
+  recebido: z.boolean().optional(),
 });
 
 /**
@@ -349,18 +350,17 @@ export const solicitacaoCreateBodySchema = z.object({
 });
 
 export const TRANSICOES_SOLICITACAO = [
-  REQUEST_STATUS.PRONTA_PARA_ENVIO,
   REQUEST_STATUS.ENVIADA,
-  REQUEST_STATUS.RECEBIDA_PELA_LIDERANCA,
-  REQUEST_STATUS.APROVADA,
-  REQUEST_STATUS.ATENDIDA,
-  REQUEST_STATUS.CANCELADA,
+  REQUEST_STATUS.RECEBIDA,
+  REQUEST_STATUS.EXCLUIDA,
 ] as const;
 
 export const solicitacaoTransitionBodySchema = z.object({
   operationId,
   para: z.enum(TRANSICOES_SOLICITACAO),
   motivo: z.string().trim().max(300).optional(),
+  /** Códigos dos itens que NÃO foram recebidos (usado na transição para RECEBIDA). */
+  naoRecebidos: z.array(z.string().trim().min(1).max(40)).max(50).optional(),
   pin: z.string().optional(),
   assinaturaMatricula: z.string().min(3),
   matriculaConfirmacao: matriculaSchema.optional(),

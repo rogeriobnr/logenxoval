@@ -25,8 +25,8 @@ Operações do contexto de um depósito: **sempre** o depósito ativo autorizado
 | Ajuste autorizado de peça avulsa | ❌ | 🔒🔑 | 🔒🔑 |
 | Descarte de peça avulsa | ❌ | 🔒🔑 | 🔒🔑 |
 | Criar solicitação de consumíveis/EPI | ✅ | ✅ | ✅ |
-| Editar/enviar/cancelar solicitação própria | ✅ | ✅ | ✅ |
-| Aprovar/atender solicitação | ❌ | 🔒🔑 | 🔒🔑 |
+| Compartilhar solicitação própria (marca enviada) / excluir própria | ✅ | ✅ | ✅ |
+| Marcar recebimento (com itens não recebidos) / excluir solicitação | ❌ | 🔒 | 🔒 |
 | Editar conferência finalizada (autor) | 🔒 | ✅ | ✅ |
 | Editar conferência finalizada (terceiro) | ❌ | 🔒🔑 | 🔒🔑 |
 | Editar própria conferência | 🔒 | 🔒 | 🔒 |

@@ -240,6 +240,7 @@ export async function processarSync(deps: SyncDeps, body: typeof syncBodySchema.
             requestId: p.data.requestId,
             para: p.data.para,
             motivo: p.data.motivo,
+            naoRecebidos: p.data.naoRecebidos,
             pin: p.data.pin,
             assinaturaMatricula: p.data.assinaturaMatricula,
             matriculaConfirmacao: p.data.matriculaConfirmacao ?? deps.authUser.matricula,

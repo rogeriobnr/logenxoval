@@ -113,8 +113,8 @@ movements análogos a sparePartMovements.
 ### consumable_requests / ppe_requests
 ```
 id, depositoId, solicitanteId, matricula, status
-(RASCUNHO|PRONTA_PARA_ENVIO|ENVIADA|RECEBIDA_PELA_LIDERANCA|APROVADA|ATENDIDA|CANCELADA),
-dataEm, itens (json: [{qtd,descricao,codigo}] )
+(RASCUNHO|ENVIADA|RECEBIDA|EXCLUIDA),
+dataEm, itens (json: [{qtd,descricao,codigo,recebido?}])
 ```
 
 ### inspections (CONFERÊNCIAS)

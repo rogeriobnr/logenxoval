@@ -45,6 +45,7 @@ describe('fase10 - consumíveis e EPIs (solicitações)', () => {
   let mecId: string;
   let dep: string;
   let requestId: string;
+  let reqLider: string;
 
   before(async () => {
     await ensureMigrated();
@@ -142,46 +143,71 @@ describe('fase10 - consumíveis e EPIs (solicitações)', () => {
     assert.equal(res.json().solicitacao.id, requestId);
   });
 
-  it('dono avança RASCUNHO → PRONTA_PARA_ENVIO → ENVIADA', async () => {
-    for (const para of ['PRONTA_PARA_ENVIO', 'ENVIADA']) {
-      const res = await app.inject({
-        method: 'POST',
-        url: `/deposits/${dep}/requests/${requestId}/transition`,
-        headers: auth(mecToken, DEV_MEC),
-        payload: { operationId: OP(`trans-${para}`), para, assinaturaMatricula: 'F10-MEC' },
-      });
-      assert.equal(res.statusCode, 200, res.body);
-      assert.equal(res.json().solicitacao.status, para);
-    }
-  });
-
-  it('mecânico não pode aprovar solicitação → 403', async () => {
+  it('dono compartilha → ENVIADA + log SOLICITACAO_ENVIADA', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/deposits/${dep}/requests/${requestId}/transition`,
       headers: auth(mecToken, DEV_MEC),
-      payload: { operationId: OP('mec-aprova'), para: 'APROVADA', assinaturaMatricula: 'F10-MEC' },
+      payload: { operationId: OP('trans-enviada'), para: 'ENVIADA', assinaturaMatricula: 'F10-MEC' },
     });
-    assert.equal(res.statusCode, 403, res.body);
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().solicitacao.status, 'ENVIADA');
+
+    const logs = await app.inject({
+      method: 'GET',
+      url: `/deposits/${dep}/logs`,
+      headers: auth(mecToken, DEV_MEC),
+    });
+    const tipos = logs.json().logs.map((l: { tipo: string }) => l.tipo);
+    assert.ok(tipos.includes('SOLICITACAO_ENVIADA'), `faltou SOLICITACAO_ENVIADA: ${tipos.join(',')}`);
   });
 
-  it('líder recebe (liderança) e aprova → log SOLICITACAO_APROVADA', async () => {
+  it('mecânico não consegue transicionar solicitação de outra pessoa → 403', async () => {
+    const criada = await app.inject({
+      method: 'POST',
+      url: `/deposits/${dep}/requests`,
+      headers: auth(liderToken, DEV_LDR),
+      payload: {
+        operationId: OP('lider-cria'),
+        tipo: 'EPI',
+        itens: [{ codigo: 'CAP-5', descricao: 'Capacete', qtd: 5 }],
+        assinaturaMatricula: 'F10-LDR',
+        matriculaConfirmacao: 'F10-LDR',
+      },
+    });
+    assert.equal(criada.statusCode, 200, criada.body);
+    reqLider = criada.json().solicitacao.id;
+    assert.equal(criada.json().solicitacao.solicitanteId, liderId);
+
+    for (const para of ['ENVIADA', 'EXCLUIDA']) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/deposits/${dep}/requests/${reqLider}/transition`,
+        headers: auth(mecToken, DEV_MEC),
+        payload: { operationId: OP(`mec-nao-pode-${para}`), para, assinaturaMatricula: 'F10-MEC' },
+      });
+      assert.equal(res.statusCode, 403, res.body);
+    }
+  });
+
+  it('liderança marca recebido com itens não recebidos → RECEBIDA + log SOLICITACAO_RECEBIDA', async () => {
     const rec = await app.inject({
       method: 'POST',
       url: `/deposits/${dep}/requests/${requestId}/transition`,
       headers: auth(liderToken, DEV_LDR),
-      payload: { operationId: OP('lider-recebe'), para: 'RECEBIDA_PELA_LIDERANCA', assinaturaMatricula: 'F10-LDR' },
+      payload: {
+        operationId: OP('lider-recebe'),
+        para: 'RECEBIDA',
+        naoRecebidos: ['AD-ISOL'],
+        assinaturaMatricula: 'F10-LDR',
+      },
     });
     assert.equal(rec.statusCode, 200, rec.body);
-
-    const ap = await app.inject({
-      method: 'POST',
-      url: `/deposits/${dep}/requests/${requestId}/transition`,
-      headers: auth(liderToken, DEV_LDR),
-      payload: { operationId: OP('lider-aprova'), para: 'APROVADA', assinaturaMatricula: 'F10-LDR' },
-    });
-    assert.equal(ap.statusCode, 200, ap.body);
-    assert.equal(ap.json().solicitacao.status, 'APROVADA');
+    const sol = rec.json().solicitacao;
+    assert.equal(sol.status, 'RECEBIDA');
+    const recebidoDe = Object.fromEntries(sol.itens.map((i: { codigo: string; recebido?: boolean }) => [i.codigo, i.recebido]));
+    assert.equal(recebidoDe['LUVA-40'], true);
+    assert.equal(recebidoDe['AD-ISOL'], false);
 
     const logs = await app.inject({
       method: 'GET',
@@ -189,29 +215,36 @@ describe('fase10 - consumíveis e EPIs (solicitações)', () => {
       headers: auth(liderToken, DEV_LDR),
     });
     const tipos = logs.json().logs.map((l: { tipo: string }) => l.tipo);
-    assert.ok(tipos.includes('SOLICITACAO_APROVADA'), `faltou SOLICITACAO_APROVADA: ${tipos.join(',')}`);
+    assert.ok(tipos.includes('SOLICITACAO_RECEBIDA'), `faltou SOLICITACAO_RECEBIDA: ${tipos.join(',')}`);
   });
 
-  it('líder atende APROVADA → ATENDIDA', async () => {
+  it('liderança exclui solicitação → EXCLUIDA + log SOLICITACAO_EXCLUIDA', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/deposits/${dep}/requests/${requestId}/transition`,
       headers: auth(liderToken, DEV_LDR),
-      payload: { operationId: OP('lider-atende'), para: 'ATENDIDA', assinaturaMatricula: 'F10-LDR' },
+      payload: { operationId: OP('lider-exclui'), para: 'EXCLUIDA', assinaturaMatricula: 'F10-LDR' },
     });
     assert.equal(res.statusCode, 200, res.body);
-    assert.equal(res.json().solicitacao.status, 'ATENDIDA');
+    assert.equal(res.json().solicitacao.status, 'EXCLUIDA');
+
+    const logs = await app.inject({
+      method: 'GET',
+      url: `/deposits/${dep}/logs`,
+      headers: auth(liderToken, DEV_LDR),
+    });
+    const tipos = logs.json().logs.map((l: { tipo: string }) => l.tipo);
+    assert.ok(tipos.includes('SOLICITACAO_EXCLUIDA'), `faltou SOLICITACAO_EXCLUIDA: ${tipos.join(',')}`);
   });
 
-  it('lista de solicitações: mecânico vê as próprias e líder vê todas', async () => {
+  it('lista de solicitações: excluída não aparece; mecânico vê as próprias e líder vê todas', async () => {
     const mec = await app.inject({
       method: 'GET',
       url: `/deposits/${dep}/requests`,
       headers: auth(mecToken, DEV_MEC),
     });
     assert.equal(mec.statusCode, 200, mec.body);
-    assert.ok(mec.json().solicitacoes.every((r: { matricula: string }) => r.matricula === 'F10-MEC'));
-    assert.equal(mec.json().solicitacoes.length, 1);
+    assert.equal(mec.json().solicitacoes.length, 0);
 
     const ldr = await app.inject({
       method: 'GET',
@@ -219,8 +252,9 @@ describe('fase10 - consumíveis e EPIs (solicitações)', () => {
       headers: auth(liderToken, DEV_LDR),
     });
     assert.equal(ldr.statusCode, 200, ldr.body);
+    assert.ok(!ldr.json().solicitacoes.some((r: { id: string }) => r.id === requestId), 'solicitação excluída veio na lista');
     assert.equal(ldr.json().solicitacoes.length, 1);
-    assert.equal(ldr.json().solicitacoes[0].id, requestId);
+    assert.equal(ldr.json().solicitacoes[0].id, reqLider);
   });
 
   it('sincronização com solicitante diferente do usuário → 403', async () => {
@@ -311,7 +345,7 @@ describe('fase10 - consumíveis e EPIs (solicitações)', () => {
             payload: {
               depositoId: dep,
               requestId: epi.id,
-              para: 'PRONTA_PARA_ENVIO',
+              para: 'ENVIADA',
               assinaturaMatricula: 'F10-MEC',
             },
           },
@@ -329,6 +363,43 @@ describe('fase10 - consumíveis e EPIs (solicitações)', () => {
       headers: auth(liderToken, DEV_LDR),
     });
     const depois = antes.json().solicitacoes.find((r: { matricula: string }) => r.matricula === 'F10-MEC');
-    assert.equal(depois.status, 'PRONTA_PARA_ENVIO');
+    assert.equal(depois.status, 'ENVIADA');
+  });
+
+  it('dono exclui solicitação EPI sincronizada → fora da lista + log SOLICITACAO_EXCLUIDA', async () => {
+    const ldr = await app.inject({
+      method: 'GET',
+      url: `/deposits/${dep}/requests?tipo=EPI`,
+      headers: auth(liderToken, DEV_LDR),
+    });
+    const epi = ldr.json().solicitacoes.find((r: { id: string; matricula: string }) => r.matricula === 'F10-MEC');
+    assert.ok(epi, 'solicitação EPI do mecânico não encontrada');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/deposits/${dep}/requests/${epi.id}/transition`,
+      headers: auth(mecToken, DEV_MEC),
+      payload: { operationId: OP('mec-exclui-epi'), para: 'EXCLUIDA', assinaturaMatricula: 'F10-MEC' },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    assert.equal(res.json().solicitacao.status, 'EXCLUIDA');
+
+    const depois = await app.inject({
+      method: 'GET',
+      url: `/deposits/${dep}/requests?tipo=EPI`,
+      headers: auth(liderToken, DEV_LDR),
+    });
+    assert.ok(
+      !depois.json().solicitacoes.some((r: { id: string }) => r.id === epi.id),
+      'solicitação excluída pelo dono veio na lista',
+    );
+
+    const logs = await app.inject({
+      method: 'GET',
+      url: `/deposits/${dep}/logs`,
+      headers: auth(mecToken, DEV_MEC),
+    });
+    const tipos = logs.json().logs.map((l: { tipo: string }) => l.tipo);
+    assert.ok(tipos.includes('SOLICITACAO_EXCLUIDA'), `faltou SOLICITACAO_EXCLUIDA: ${tipos.join(',')}`);
   });
 });

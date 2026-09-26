@@ -26,31 +26,39 @@ function req(over: Partial<RequestRow> = {}): RequestRow {
   };
 }
 
-test('acoesDaSolicitacao: dono controla rascunho→pronta→enviada', () => {
-  const dono = acoesDaSolicitacao(req(), 'MECANICO', 'u-dono');
+test('acoesDaSolicitacao: dono controla rascunho/exclusão no fluxo simplificado', () => {
+  const donoRascunho = acoesDaSolicitacao(req(), 'MECANICO', 'u-dono');
   assert.deepEqual(
-    dono.map((a) => a.para),
-    ['PRONTA_PARA_ENVIO', 'CANCELADA'],
+    donoRascunho.map((a) => a.para),
+    ['EXCLUIDA'],
   );
+  assert.equal(donoRascunho[0].danger, true);
 
-  const pronta = acoesDaSolicitacao(
-    req({ status: 'PRONTA_PARA_ENVIO' }),
+  const donoEnviada = acoesDaSolicitacao(
+    req({ status: 'ENVIADA' }),
     'MECANICO',
     'u-dono',
   );
   assert.deepEqual(
-    pronta.map((a) => a.para),
-    ['ENVIADA', 'CANCELADA'],
+    donoEnviada.map((a) => a.para),
+    ['RECEBIDA', 'EXCLUIDA'],
   );
 });
 
-test('acoesDaSolicitacao: liderança aprova/atende exige PIN; mecânico não vê essas ações', () => {
-  const lider = acoesDaSolicitacao(req({ status: 'RECEBIDA_PELA_LIDERANCA' }), 'LIDER', 'u-outro');
-  const aprova = lider.find((a) => a.para === 'APROVADA');
-  assert.ok(aprova);
-  assert.equal(aprova.precisaPin, true);
+test('acoesDaSolicitacao: liderança marca recebida e exclui; mecânico não-dono não vê ações', () => {
+  const lider = acoesDaSolicitacao(req({ status: 'ENVIADA' }), 'LIDER', 'u-outro');
+  assert.deepEqual(
+    lider.map((a) => a.para),
+    ['RECEBIDA', 'EXCLUIDA'],
+  );
 
-  const mec = acoesDaSolicitacao(req({ status: 'RECEBIDA_PELA_LIDERANCA' }), 'MECANICO', 'u-dono');
+  const recebida = acoesDaSolicitacao(req({ status: 'RECEBIDA' }), 'LIDER', 'u-outro');
+  assert.deepEqual(
+    recebida.map((a) => a.para),
+    ['EXCLUIDA'],
+  );
+
+  const mec = acoesDaSolicitacao(req({ status: 'ENVIADA' }), 'MECANICO', 'u-outro');
   assert.equal(mec.length, 0);
 });
 

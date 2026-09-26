@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import type { ConsumableRow, PpeItemRow, RequestRow, SolicitacaoTipo } from '@logenxoval/contracts';
+import type { ConsumableRow, PpeItemRow, RequestRow, RequestStatus, SolicitacaoTipo } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -31,10 +31,16 @@ const TIPO_TAB: Record<string, SolicitacaoTipo> = {
   epis: 'EPI',
 };
 
+const TAB_LABEL: Record<TabEstoque, string> = {
+  consumiveis: 'Consumíveis',
+  epis: 'EPIs',
+  solicitacoes: 'Solicitações',
+};
+
 export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoque }) {
   const { api, session, online, deviceId } = useAuth();
   const toast = useToast();
-  const [tab, setTab] = useState<TabEstoque>(inicial);
+  const tab = inicial;
   const [busy, setBusy] = useState(false);
   const [transBusy, setTransBusy] = useState(false);
 
@@ -68,11 +74,12 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
 
   // Transição
   const [transAlvo, setTransAlvo] = useState<{ req: RequestRow; acao: AcaoSolicitacao } | null>(null);
-  const [transPin, setTransPin] = useState('');
   const [transMotivo, setTransMotivo] = useState('');
+  // Itens marcados como NÃO recebidos na transição para RECEBIDA (chave = codigo).
+  const [naoRecebSel, setNaoRecebSel] = useState<Record<string, boolean>>({});
 
-  // Compartilhar markdown
-  const [shareAlvo, setShareAlvo] = useState<string | null>(null);
+  // Compartilhar markdown (guarda a solicitação para marcar ENVIADA após o envio).
+  const [shareAlvo, setShareAlvo] = useState<{ req: RequestRow; texto: string } | null>(null);
 
   const recarregar = useCallback(async () => {
     if (!depositoId) return;
@@ -92,10 +99,6 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
     void recarregar();
   }, [recarregar]);
 
-  useEffect(() => {
-    setTab(inicial);
-  }, [inicial]);
-
   if (!session || !session.depositoAtivo) {
     return <Alert kind="warn">Selecione um depósito ativo para acessar consumíveis e EPIs.</Alert>;
   }
@@ -114,26 +117,37 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
 
   const renderRequisicao = (req: RequestRow) => {
     const acoes = acoesDaSolicitacao(req, perfil, usuarioId);
+    const recebimento = req.status === 'RECEBIDA'
+      ? req.itens
+          .map((i) => (i.recebido === false ? `${i.qtd}x ${i.codigo} ✗` : `${i.qtd}x ${i.codigo} ✓`))
+          .join(' · ')
+      : req.itens.map((i) => `${i.qtd}x ${i.codigo} ${i.descricao}`).join(' · ') || 'sem itens';
     return (
       <div key={req.id} className="list-item" style={{ borderBottom: '1px solid var(--line)' }}>
         <div style={{ flex: 1 }}>
           <div className="list-title">
             {SOLICITACAO_TIPO_LABEL[req.tipo]} · {req.matricula} · {new Date(req.dataEm).toLocaleString('pt-BR')}
           </div>
-          <div className="list-sub">
-            {req.itens.map((i) => `${i.qtd}x ${i.codigo} ${i.descricao}`).join(' · ') || 'sem itens'}
-          </div>
+          <div className="list-sub">{recebimento}</div>
+          {req.status === 'RECEBIDA' && req.itens.some((i) => i.recebido === false) && (
+            <div className="list-sub">Há itens que não foram recebidos.</div>
+          )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
-          <span className={`chip ${req.status === 'CANCELADA' ? 'muted' : req.status === 'APROVADA' || req.status === 'ATENDIDA' ? 'ok' : 'warn'}`}>
+          <span className={`chip ${req.status === 'RASCUNHO' ? 'warn' : req.status === 'ENVIADA' ? 'primary' : req.status === 'RECEBIDA' ? 'ok' : 'muted'}`}>
             {REQUEST_STATUS_LABEL[req.status]}
           </span>
           <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            {acoes.length > 0 && (
-              <Btn variant="secondary" className="small" onClick={() => { setTransAlvo({ req, acao: acoes[0] }); setTransPin(''); setTransMotivo(''); }}>
-                {acoes[0].rotulo}
+            {acoes.map((acao) => (
+              <Btn
+                key={acao.para}
+                variant="secondary"
+                className="small"
+                onClick={() => { setTransAlvo({ req, acao }); setTransMotivo(''); setNaoRecebSel({}); }}
+              >
+                {acao.rotulo}
               </Btn>
-            )}
+            ))}
             <Btn variant="ghost" className="small" onClick={() => void compartilhar(req)}>Compartilhar</Btn>
           </div>
         </div>
@@ -142,6 +156,12 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
   };
   const resumoC = resumoDeEstoque(consumiveis);
   const resumoP = resumoDeEstoque(ppe);
+  const rotuloTab = TAB_LABEL[tab];
+  const subResumo = tab === 'consumiveis'
+    ? `Consumíveis: ${resumoC.totalItens} itens · ${resumoC.totalUnidades} un. · ${resumoC.abaixoMinimo} abaixo do mínimo`
+    : tab === 'epis'
+      ? `EPIs: ${resumoP.totalItens} itens · ${resumoP.totalUnidades} un. · ${resumoP.abaixoMinimo} abaixo do mínimo`
+      : `Solicitações registradas: ${requests.length}`;
 
   const criarSolicitacao = async (e: FormEvent) => {
     e.preventDefault();
@@ -291,16 +311,13 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
     }
   };
 
-  const confirmarTransicao = async () => {
-    if (!transAlvo) return;
-    const { req, acao } = transAlvo;
+  const executarTransicao = async (
+    req: RequestRow,
+    para: RequestStatus,
+    extras?: { motivo?: string; naoRecebidos?: string[] },
+  ) => {
     if (!online && req.id.startsWith('local:')) {
       toast.error('Sincronize primeiro — essa solicitação ainda não existe no servidor.');
-      return;
-    }
-    const pin = acao.precisaPin ? transPin.trim() : undefined;
-    if (acao.precisaPin && !pin) {
-      toast.error('Informe o PIN administrativo para aprovar/atender.');
       return;
     }
     setTransBusy(true);
@@ -312,9 +329,9 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
           `/deposits/${depositoId}/requests/${req.id}/transition`,
           {
             operationId: crypto.randomUUID(),
-            para: acao.para,
-            motivo: transMotivo.trim() || undefined,
-            ...(pin ? { pin } : {}),
+            para,
+            motivo: extras?.motivo,
+            naoRecebidos: extras?.naoRecebidos,
             assinaturaMatricula: assinatura,
             matriculaConfirmacao: session.matricula,
           },
@@ -325,16 +342,16 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
           operationId: crypto.randomUUID(),
           depositoId,
           requestId: req.id,
-          para: acao.para,
-          motivo: transMotivo.trim() || undefined,
-          pin,
+          para,
+          motivo: extras?.motivo,
+          naoRecebidos: extras?.naoRecebidos,
           assinaturaMatricula: assinatura,
         });
         toast.info('Transição registrada offline — valida na sincronização.');
       }
       setTransAlvo(null);
-      setTransPin('');
       setTransMotivo('');
+      setNaoRecebSel({});
       await recarregar();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Falha na transição');
@@ -343,24 +360,44 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
     }
   };
 
+  const confirmarTransicao = async () => {
+    if (!transAlvo) return;
+    const { req, acao } = transAlvo;
+    const naoRecebidos = acao.para === 'RECEBIDA'
+      ? req.itens.filter((i) => naoRecebSel[i.codigo]).map((i) => i.codigo)
+      : undefined;
+    await executarTransicao(req, acao.para, {
+      motivo: transMotivo.trim() || undefined,
+      ...(naoRecebidos && naoRecebidos.length > 0 ? { naoRecebidos } : {}),
+    });
+  };
+
+  /** Marca ENVIADA quando o dono compartilha uma solicitação em RASCUNHO. */
+  const marcarEnviada = async (req: RequestRow) => {
+    if (req.status !== 'RASCUNHO' || req.solicitanteId !== usuarioId) return;
+    await executarTransicao(req, 'ENVIADA');
+  };
+
   const compartilhar = async (req: RequestRow) => {
     const texto = solicitarMarkdown(req);
     if (online && navigator.share) {
       try {
         await navigator.share({ title: 'Solicitação', text: texto });
+        await marcarEnviada(req);
         return;
       } catch {
         // fallback para cópia
       }
     }
-    setShareAlvo(texto);
+    setShareAlvo({ req, texto });
   };
 
   const copiarMarkdown = async () => {
     if (!shareAlvo) return;
     try {
-      await navigator.clipboard.writeText(shareAlvo);
+      await navigator.clipboard.writeText(shareAlvo.texto);
       toast.success('Texto copiado.');
+      await marcarEnviada(shareAlvo.req);
     } catch {
       toast.error('Falha ao copiar. Copie manualmente do campo abaixo.');
     }
@@ -371,16 +408,8 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
       <div className="card" style={{ marginBottom: '1rem' }}>
         <div className="list-item">
           <div>
-            <div className="list-title">{session.depositoAtivo.nome} · consumíveis e EPIs</div>
-            <div className="list-sub">
-              Consumíveis: {resumoC.totalItens} itens · {resumoC.totalUnidades} un. · {resumoC.abaixoMinimo} abaixo do mínimo
-              · EPIs: {resumoP.totalItens} itens · {resumoP.totalUnidades} un. · {resumoP.abaixoMinimo} abaixo do mínimo
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <Btn variant={tab === 'consumiveis' ? 'primary' : 'secondary'} className="small" onClick={() => setTab('consumiveis')}>Consumíveis</Btn>
-            <Btn variant={tab === 'epis' ? 'primary' : 'secondary'} className="small" onClick={() => setTab('epis')}>EPIs</Btn>
-            <Btn variant={tab === 'solicitacoes' ? 'primary' : 'secondary'} className="small" onClick={() => setTab('solicitacoes')}>Solicitações</Btn>
+            <div className="list-title">{session.depositoAtivo.nome} · {rotuloTab}</div>
+            <div className="list-sub">{subResumo}</div>
           </div>
         </div>
       </div>
@@ -496,7 +525,7 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
         <div className="card" style={{ marginTop: '0.8rem' }}>
           <h3>Compartilhar solicitação (texto copiável)</h3>
           <div className="field">
-            <textarea readOnly rows={8} value={shareAlvo} style={{ width: '100%', resize: 'vertical' }} />
+            <textarea readOnly rows={8} value={shareAlvo.texto} style={{ width: '100%', resize: 'vertical' }} />
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
             <Btn onClick={() => void copiarMarkdown()}>Copiar</Btn>
@@ -509,26 +538,37 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
         open={transAlvo !== null}
         title={transAlvo ? `${transAlvo.acao.rotulo} · ${transAlvo.req.id.slice(0, 8).toUpperCase()}` : ''}
         message={transAlvo
-          ? `${SOLICITACAO_TIPO_LABEL[transAlvo.req.tipo]} · status atual ${REQUEST_STATUS_LABEL[transAlvo.req.status]}${transAlvo.acao.precisaPin ? ' · exige PIN administrativo' : ''}${!online ? ' · offline: segue para a fila' : ''}`
+          ? `${SOLICITACAO_TIPO_LABEL[transAlvo.req.tipo]} · status atual ${REQUEST_STATUS_LABEL[transAlvo.req.status]}${!online ? ' · offline: segue para a fila' : ''}`
           : ''}
         confirmLabel={transAlvo ? `Confirmar: ${REQUEST_STATUS_LABEL[transAlvo.acao.para].toLowerCase()}` : ''}
-        danger={transAlvo?.acao.para === 'CANCELADA'}
+        danger={transAlvo?.acao.danger === true}
         busy={transBusy}
         onConfirm={() => void confirmarTransicao()}
-        onCancel={() => { setTransAlvo(null); setTransPin(''); setTransMotivo(''); }}
+        onCancel={() => { setTransAlvo(null); setTransMotivo(''); setNaoRecebSel({}); }}
       >
-        {transAlvo?.acao.precisaPin && (
-          <Field
-            id="trans-pin"
-            label="PIN administrativo"
-            type="password"
-            inputMode="numeric"
-            value={transPin}
-            onChange={(e) => setTransPin(e.target.value)}
-            placeholder="●●●●"
-          />
+        {transAlvo?.acao.para === 'RECEBIDA' && (
+          <div>
+            <div className="list-sub" style={{ marginBottom: '0.4rem' }}>
+              Marque os itens que <strong>não</strong> foram recebidos:
+            </div>
+            {transAlvo.req.itens.map((i) => (
+              <label key={i.codigo} className="list-item" style={{ borderBottom: '1px solid var(--line)', cursor: 'pointer' }} htmlFor={`nao-rec-${i.codigo}`}>
+                <input
+                  id={`nao-rec-${i.codigo}`}
+                  type="checkbox"
+                  style={{ marginRight: '0.6rem' }}
+                  checked={naoRecebSel[i.codigo] ?? false}
+                  onChange={(e) => setNaoRecebSel({ ...naoRecebSel, [i.codigo]: e.target.checked })}
+                />
+                <div>
+                  <div className="list-title">{i.codigo}</div>
+                  <div className="list-sub">{i.qtd}x {i.descricao}</div>
+                </div>
+              </label>
+            ))}
+          </div>
         )}
-        {transAlvo?.acao.para === 'CANCELADA' && (
+        {transAlvo?.acao.para === 'EXCLUIDA' && (
           <Field id="trans-motivo" label="Motivo" value={transMotivo} onChange={(e) => setTransMotivo(e.target.value)} placeholder="Opcional" />
         )}
       </ConfirmDialog>

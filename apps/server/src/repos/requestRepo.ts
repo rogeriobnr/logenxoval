@@ -1,4 +1,4 @@
-import type { LogTipo, RequestRow, RequestStatus, SolicitacaoTipo } from '@logenxoval/contracts';
+import type { LogTipo, RequestRow, RequestStatus, SolicitacaoItem, SolicitacaoTipo } from '@logenxoval/contracts';
 import { withDepositoContext } from '../db/pool';
 import { newId, sha256Hex } from '../lib/crypto';
 import { AppError } from '../lib/errors';
@@ -19,7 +19,7 @@ export function mapRequest(row: Record<string, unknown>): RequestRow {
     matricula: row.matricula as string,
     status: row.status as RequestStatus,
     dataEm: (row.data_em as Date).toISOString(),
-    itens: (row.itens as Array<{ qtd: number; descricao: string; codigo: string }>) ?? [],
+    itens: (row.itens as SolicitacaoItem[]) ?? [],
   };
 }
 
@@ -99,18 +99,16 @@ export interface TransicionarSolicitacaoParams {
   requestId: string;
   para: RequestStatus;
   motivo?: string;
+  naoRecebidos?: string[];
   assinaturaMatricula: string;
   origemMov: 'ONLINE' | 'OFFLINE';
   dispositivo: string;
 }
 
 const LOG_TIPO_POR_TRANSICAO: Partial<Record<RequestStatus, LogTipo>> = {
-  PRONTA_PARA_ENVIO: 'SOLICITACAO_ATUALIZADA',
   ENVIADA: 'SOLICITACAO_ENVIADA',
-  RECEBIDA_PELA_LIDERANCA: 'SOLICITACAO_ATUALIZADA',
-  APROVADA: 'SOLICITACAO_APROVADA',
-  ATENDIDA: 'SOLICITACAO_ATENDIDA',
-  CANCELADA: 'SOLICITACAO_CANCELADA',
+  RECEBIDA: 'SOLICITACAO_RECEBIDA',
+  EXCLUIDA: 'SOLICITACAO_EXCLUIDA',
 };
 
 export async function obterSolicitacao(
@@ -149,7 +147,19 @@ export async function transicionarSolicitacao(
     if (!row) throw new AppError('NAO_ENCONTRADO', 'Solicitação não encontrada', 404);
     const anterior = row.status as RequestStatus;
 
-    await client.query('UPDATE requests SET status = $2 WHERE id = $1', [params.requestId, params.para]);
+    let itensAtualizados: SolicitacaoItem[] | undefined;
+    if (params.para === 'RECEBIDA') {
+      const nao = new Set(params.naoRecebidos ?? []);
+      itensAtualizados = (row.itens as SolicitacaoItem[]).map((i) => ({
+        ...i,
+        recebido: !nao.has(i.codigo),
+      }));
+    }
+    await client.query('UPDATE requests SET status = $2, itens = $3::jsonb WHERE id = $1', [
+      params.requestId,
+      params.para,
+      JSON.stringify(itensAtualizados ?? (row.itens as SolicitacaoItem[])),
+    ]);
 
     const tipo = LOG_TIPO_POR_TRANSICAO[params.para] ?? 'SOLICITACAO_ATUALIZADA';
     await insertAuditLogWith(client, {
@@ -160,7 +170,11 @@ export async function transicionarSolicitacao(
       entidade: 'requests',
       operacaoId: params.operationId,
       estadoAnterior: { requestId: params.requestId, status: anterior },
-      estadoPosterior: { requestId: params.requestId, status: params.para },
+      estadoPosterior: {
+        requestId: params.requestId,
+        status: params.para,
+        ...(params.naoRecebidos ? { naoRecebidos: params.naoRecebidos } : {}),
+      },
       motivo: params.motivo,
       origem: params.origemMov,
       dispositivo: params.dispositivo,
@@ -189,7 +203,7 @@ export async function listarSolicitacoes(
 ): Promise<RequestRow[]> {
   return withDepositoContext(depositoId, perfil, async (client) => {
     const params: string[] = [depositoId];
-    let sql = `SELECT * FROM requests WHERE deposito_id = $1`;
+    let sql = `SELECT * FROM requests WHERE deposito_id = $1 AND status <> 'EXCLUIDA'`;
     if (perfil === 'MECANICO') {
       sql += ` AND solicitante_id = $${params.length + 1}`;
       params.push(usuarioId);

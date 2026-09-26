@@ -2,12 +2,9 @@ import type { RequestRow, RequestStatus, SolicitacaoTipo } from '@logenxoval/con
 
 export const REQUEST_STATUS_LABEL: Record<RequestStatus, string> = {
   RASCUNHO: 'Rascunho',
-  PRONTA_PARA_ENVIO: 'Pronta p/ envio',
   ENVIADA: 'Enviada',
-  RECEBIDA_PELA_LIDERANCA: 'Recebida pela liderança',
-  APROVADA: 'Aprovada',
-  ATENDIDA: 'Atendida',
-  CANCELADA: 'Cancelada',
+  RECEBIDA: 'Recebida',
+  EXCLUIDA: 'Excluída',
 };
 
 export const SOLICITACAO_TIPO_LABEL: Record<SolicitacaoTipo, string> = {
@@ -34,14 +31,14 @@ export function resumoDeEstoque(rows: Array<Pick<EstadoEstoque, 'estoqueAtual' |
 export type AcaoSolicitacao = {
   para: RequestStatus;
   rotulo: string;
-  lideranca: boolean;
-  precisaPin: boolean;
+  danger?: boolean;
 };
 
 /**
- * Ações disponíveis por estado da solicitação (espelho das transições do
- * servidor, docs 09/10.6). O dono comanda rascunho→pronta→envio; a liderança
- * recebe, aprova (com PIN) e atende.
+ * Ações disponíveis por estado da solicitação (fluxo simplificado):
+ * o dono compartilha (marca ENVIADA automaticamente após o compartilhamento),
+ * a solicitação é marcada como RECEBIDA (com itens não recebidos) e pode ser
+ * EXCLUIDA pelo dono ou pela liderança.
  */
 export function acoesDaSolicitacao(
   req: RequestRow,
@@ -53,29 +50,18 @@ export function acoesDaSolicitacao(
   switch (req.status) {
     case 'RASCUNHO':
       return dono
-        ? [
-            { para: 'PRONTA_PARA_ENVIO', rotulo: 'Marcar pronta p/ envio', lideranca: false, precisaPin: false },
-            { para: 'CANCELADA', rotulo: 'Cancelar', lideranca: false, precisaPin: false },
-          ]
-        : [];
-    case 'PRONTA_PARA_ENVIO':
-      return dono
-        ? [
-            { para: 'ENVIADA', rotulo: 'Enviar', lideranca: false, precisaPin: false },
-            { para: 'CANCELADA', rotulo: 'Cancelar', lideranca: false, precisaPin: false },
-          ]
+        ? [{ para: 'EXCLUIDA', rotulo: 'Excluir', danger: true }]
         : [];
     case 'ENVIADA':
-      return lideranca
-        ? [{ para: 'RECEBIDA_PELA_LIDERANCA', rotulo: 'Receber pela liderança', lideranca: true, precisaPin: false }]
+      return dono || lideranca
+        ? [
+            { para: 'RECEBIDA', rotulo: 'Marcar recebido' },
+            { para: 'EXCLUIDA', rotulo: 'Excluir', danger: true },
+          ]
         : [];
-    case 'RECEBIDA_PELA_LIDERANCA':
-      return lideranca
-        ? [{ para: 'APROVADA', rotulo: 'Aprovar com PIN', lideranca: true, precisaPin: true }]
-        : [];
-    case 'APROVADA':
-      return lideranca
-        ? [{ para: 'ATENDIDA', rotulo: 'Atender com PIN', lideranca: true, precisaPin: true }]
+    case 'RECEBIDA':
+      return dono || lideranca
+        ? [{ para: 'EXCLUIDA', rotulo: 'Excluir', danger: true }]
         : [];
     default:
       return [];

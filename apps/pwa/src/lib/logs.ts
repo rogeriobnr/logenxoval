@@ -39,9 +39,8 @@ export const LOG_TIPO_LABEL: Record<LogTipo, string> = {
   SOLICITACAO_CRIADA: 'Solicitação criada',
   SOLICITACAO_ATUALIZADA: 'Solicitação atualizada',
   SOLICITACAO_ENVIADA: 'Solicitação enviada',
-  SOLICITACAO_APROVADA: 'Solicitação aprovada',
-  SOLICITACAO_ATENDIDA: 'Solicitação atendida',
-  SOLICITACAO_CANCELADA: 'Solicitação cancelada',
+  SOLICITACAO_RECEBIDA: 'Solicitação recebida',
+  SOLICITACAO_EXCLUIDA: 'Solicitação excluída',
 };
 
 export const LOG_GRUPO: Record<LogTipo, LogGrupo> = {
@@ -81,9 +80,8 @@ export const LOG_GRUPO: Record<LogTipo, LogGrupo> = {
   SOLICITACAO_CRIADA: 'reposicao',
   SOLICITACAO_ATUALIZADA: 'reposicao',
   SOLICITACAO_ENVIADA: 'reposicao',
-  SOLICITACAO_APROVADA: 'reposicao',
-  SOLICITACAO_ATENDIDA: 'reposicao',
-  SOLICITACAO_CANCELADA: 'reposicao',
+  SOLICITACAO_RECEBIDA: 'reposicao',
+  SOLICITACAO_EXCLUIDA: 'reposicao',
 };
 
 export const GRUPO_LABEL: Record<LogGrupo, string> = {

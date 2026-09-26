@@ -134,11 +134,33 @@ export async function registrarBaixaOffline(args: BaixaOfflineArgs): Promise<voi
     proximaTentativaEm: args.dataHora,
     status: 'PENDENTE',
   };
-  await db.transaction('rw', [db.goldboxMovements, db.inventoryItems, db.syncQueue], async () => {
+  await db.transaction('rw', [db.goldboxMovements, db.inventoryItems, db.divergences, db.syncQueue], async () => {
     await db.goldboxMovements.put(movimento);
     const item = await db.inventoryItems.where('[depositoId+codigoSap]').equals([args.depositoId, args.codigoSap]).first();
     if (item) {
       await db.inventoryItems.put({ ...item, qtdAtual: item.qtdAtual - args.quantidade });
+    }
+    // Baixa marcada como "é reposição" → item entra na lista de aguardando reposição
+    // (mesma semântica do server: uma divergência REPOSICAO ABERTA por item).
+    if (args.reposicao) {
+      const aberta = await db.divergences
+        .where('depositoId')
+        .equals(args.depositoId)
+        .filter((d) => d.codigoSap === args.codigoSap && d.tipo === 'REPOSICAO' && d.status === 'ABERTA')
+        .first();
+      if (!aberta) {
+        await db.divergences.put({
+          id: args.operationId,
+          depositoId: args.depositoId,
+          codigoSap: args.codigoSap,
+          tipo: 'REPOSICAO',
+          quantidade: args.quantidade,
+          status: 'ABERTA',
+          origemOperationId: args.operationId,
+          criadoEm: args.dataHora,
+          criadoPor: args.matricula,
+        });
+      }
     }
     await db.syncQueue.put(fila);
   });
@@ -228,12 +250,19 @@ export async function registrarEntradaMaterialOffline(args: EntradaMaterialOffli
     proximaTentativaEm: args.dataHora,
     status: 'PENDENTE',
   };
-  await db.transaction('rw', [db.goldboxMovements, db.inventoryItems, db.syncQueue], async () => {
+  await db.transaction('rw', [db.goldboxMovements, db.inventoryItems, db.divergences, db.syncQueue], async () => {
     await db.goldboxMovements.put(movimento);
     const item = await db.inventoryItems.where('[depositoId+codigoSap]').equals([args.depositoId, args.codigoSap]).first();
     if (item) {
       await db.inventoryItems.put({ ...item, qtdAtual: item.qtdAtual + args.quantidade });
     }
+    // Entrada/resposição recebida resolve a pendência "aguardando reposição" local
+    // (mesma semântica do server: fecha a divergência REPOSICAO ABERTA do item).
+    await db.divergences
+      .where('depositoId')
+      .equals(args.depositoId)
+      .filter((d) => d.codigoSap === args.codigoSap && d.tipo === 'REPOSICAO' && d.status === 'ABERTA')
+      .modify({ status: 'RESOLVIDA', resolvidoEm: args.dataHora, resolvidoPor: args.matricula });
     await db.syncQueue.put(fila);
   });
 }
@@ -740,7 +769,9 @@ export async function registrarEntradaEstoqueOffline(args: EntradaEstoqueOffline
 
 export async function listRequestsLocal(depositoId: string): Promise<RequestRow[]> {
   const rows = await db.requests.where('depositoId').equals(depositoId).toArray();
-  return rows.sort((a, b) => b.dataEm.localeCompare(a.dataEm));
+  return rows
+    .filter((r) => r.status !== 'EXCLUIDA')
+    .sort((a, b) => b.dataEm.localeCompare(a.dataEm));
 }
 
 export interface SolicitacaoOfflineArgs {
@@ -789,6 +820,7 @@ export interface TransicaoSolicitacaoOfflineArgs {
   requestId: string;
   para: RequestStatus;
   motivo?: string;
+  naoRecebidos?: string[];
   pin?: string;
   assinaturaMatricula: string;
 }
@@ -798,11 +830,19 @@ export async function registrarTransicaoSolicitacaoOffline(args: TransicaoSolici
   const criadoEm = new Date().toISOString();
   await db.transaction('rw', [db.requests, db.syncQueue], async () => {
     const atual = await db.requests.get(args.requestId);
-    if (atual) await db.requests.put({ ...atual, status: args.para });
+    if (atual) {
+      let itens = atual.itens;
+      if (args.para === 'RECEBIDA') {
+        const nao = new Set(args.naoRecebidos ?? []);
+        itens = atual.itens.map((i) => ({ ...i, recebido: !nao.has(i.codigo) }));
+      }
+      await db.requests.put({ ...atual, status: args.para, itens });
+    }
     await db.syncQueue.put(enfileirar(args, 'SOLICITACAO_TRANSICAO', criadoEm, {
       requestId: args.requestId,
       para: args.para,
       motivo: args.motivo,
+      naoRecebidos: args.naoRecebidos,
       pin: args.pin,
       assinaturaMatricula: args.assinaturaMatricula,
     }));
