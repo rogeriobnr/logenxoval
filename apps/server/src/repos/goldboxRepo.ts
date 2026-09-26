@@ -28,6 +28,7 @@ export function mapGoldboxMovimento(row: Record<string, unknown>): GoldboxMoveme
     nomeCompleto: row.nome_completo as string,
     matricula: row.matricula as string,
     reposicao: Boolean(row.reposicao),
+    tipo: row.tipo === 'ENTRADA' ? 'ENTRADA' : 'BAIXA',
     origem: row.origem as GoldboxMovementRow['origem'],
     dispositivo: row.dispositivo as string,
     statusSync: row.status_sync as GoldboxMovementRow['statusSync'],
@@ -186,6 +187,168 @@ export async function aplicarBaixa(params: {
   });
 }
 
+export interface ObservacaoEntrada {
+  jaProcessada: boolean;
+  movimento: GoldboxMovementRow;
+  saldo: number;
+  divergenciasFechadas: number;
+}
+
+/**
+ * Entrada de material no enxoval (reposição recebida do almoxarifado):
+ * credita qtd_atual, grava movimento tipo ENTRADA e RESOLVE as divergências
+ * REPOSICAO ABERTAS do mesmo SAP (docs 16).
+ */
+export async function aplicarEntrada(params: {
+  depositoId: string;
+  perfil: string;
+  usuarioId: string;
+  matricula: string;
+  nomeCompleto: string;
+  operationId: string;
+  codigoSap: string;
+  materialId?: string;
+  descricao?: string;
+  quantidade: number;
+  observacao?: string;
+  origem: 'ONLINE' | 'OFFLINE';
+  dispositivo: string;
+  dataHora: string;
+  assinaturaMatricula: string;
+}): Promise<ObservacaoEntrada> {
+  return withDepositoContext(params.depositoId, params.perfil, async (client) => {
+    const dup = await client.query(
+      'SELECT resultado FROM processed_operations WHERE operation_id = $1',
+      [params.operationId],
+    );
+    const dupRow = rowsOf(dup)[0];
+    if (dupRow) {
+      const mov = await findByOperationId(client, params.operationId);
+      return {
+        jaProcessada: true,
+        movimento: mov ?? (dupRow.resultado as unknown as GoldboxMovementRow),
+        saldo: 0,
+        divergenciasFechadas: 0,
+      };
+    }
+
+    const dep = await client.query(
+      'SELECT id, status, versao_atual_enxoval FROM deposits WHERE id = $1',
+      [params.depositoId],
+    );
+    const depRow = rowsOf(dep)[0];
+    if (!depRow) throw new AppError('NAO_ENCONTRADO', 'Depósito não encontrado', 404);
+    if (depRow.status === 'INATIVO') {
+      throw new AppError('OPERACAO_NEGADA', 'Depósito inativo não aceita entradas', 409);
+    }
+
+    const itRes = await client.query(
+      `SELECT id, texto_breve, material_id, qtd_atual FROM inventory_items
+       WHERE deposito_id = $1 AND codigo_sap = $2 AND versao = $3 FOR UPDATE`,
+      [params.depositoId, params.codigoSap, depRow.versao_atual_enxoval ?? null],
+    );
+    const item = rowsOf(itRes)[0];
+    if (!item) throw new AppError('ITEM_INDISPONIVEL', 'Item não encontrado no enxoval da versão atual', 404);
+
+    const novoSaldo = Number(item.qtd_atual) + params.quantidade;
+    const movimentoId = newId();
+
+    await client.query(
+      `INSERT INTO goldbox_movements
+        (id, operation_id, deposito_id, codigo_sap, material_id, descricao, quantidade,
+         data_hora, usuario_id, nome_completo, matricula, reposicao, tipo, origem, dispositivo,
+         status_sync, assinatura_matricula, criado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false,'ENTRADA',$12,$13,'ENVIADO',$14,now())`,
+      [
+        movimentoId,
+        params.operationId,
+        params.depositoId,
+        params.codigoSap,
+        params.materialId ?? item.material_id ?? null,
+        params.descricao ?? item.texto_breve,
+        params.quantidade,
+        new Date(params.dataHora).toISOString(),
+        params.usuarioId,
+        params.nomeCompleto,
+        params.matricula,
+        params.origem,
+        params.dispositivo,
+        params.assinaturaMatricula,
+      ],
+    );
+
+    await client.query('UPDATE inventory_items SET qtd_atual = $2, atualizado_em = now() WHERE id = $1', [
+      item.id,
+      novoSaldo,
+    ]);
+
+    const resolvidas = await client.query(
+      `UPDATE divergences
+        SET status = 'RESOLVIDA', resolvido_em = now(), resolvido_por = $3
+       WHERE deposito_id = $1 AND codigo_sap = $2 AND tipo = 'REPOSICAO' AND status = 'ABERTA'
+       RETURNING id`,
+      [params.depositoId, params.codigoSap, params.matricula],
+    );
+    const divergenciasFechadas = rowsOf(resolvidas).length;
+
+    if (divergenciasFechadas > 0) {
+      await insertAuditLogWith(client, {
+        tipo: 'REPOSICAO',
+        usuarioId: params.usuarioId,
+        matricula: params.matricula,
+        depositoId: params.depositoId,
+        entidade: 'divergences',
+        operacaoId: params.operationId,
+        estadoAnterior: { codigoSap: params.codigoSap, status: 'ABERTA' },
+        estadoPosterior: { codigoSap: params.codigoSap, status: 'RESOLVIDA', quantidade: divergenciasFechadas },
+        origem: params.origem,
+        dispositivo: params.dispositivo,
+      });
+    }
+
+    await client.query(
+      `INSERT INTO processed_operations (operation_id, entidade, acao, payload_hash, processado_em, resultado)
+       VALUES ($1,'goldbox_movements','ENTRADA',$2,now(),$3::jsonb)`,
+      [
+        params.operationId,
+        sha256Hex(JSON.stringify({ operationId: params.operationId, codigoSap: params.codigoSap, quantidade: params.quantidade })),
+        JSON.stringify({
+          id: movimentoId,
+          codigoSap: params.codigoSap,
+          quantidade: params.quantidade,
+          saldo: novoSaldo,
+        }),
+      ],
+    );
+
+    await insertAuditLogWith(client, {
+      tipo: 'ENTRADA_MATERIAL',
+      usuarioId: params.usuarioId,
+      matricula: params.matricula,
+      depositoId: params.depositoId,
+      entidade: 'goldbox_movements',
+      operacaoId: params.operationId,
+      estadoPosterior: {
+        codigoSap: params.codigoSap,
+        quantidade: params.quantidade,
+        saldo: novoSaldo,
+        divergenciasFechadas,
+      },
+      motivo: params.observacao,
+      origem: params.origem,
+      dispositivo: params.dispositivo,
+    });
+
+    const movimento = (await findByOperationIdRaw(client, params.operationId))!;
+    return {
+      jaProcessada: false,
+      movimento: mapGoldboxMovimento(movimento),
+      saldo: novoSaldo,
+      divergenciasFechadas,
+    };
+  });
+}
+
 export interface ObservacaoEstorno {
   jaProcessada: boolean;
   movimento: GoldboxMovementRow;
@@ -338,7 +501,7 @@ export interface GoldboxFilter {
   codigoSap?: string;
   usuario?: string;
   reposicao?: boolean;
-  tipo?: 'BAIXA' | 'ESTORNO';
+  tipo?: 'BAIXA' | 'ESTORNO' | 'ENTRADA';
 }
 
 export async function listGoldbox(
@@ -360,7 +523,8 @@ export async function listGoldbox(
     if (filtro.usuario) where.push(`matricula = ${bind(filtro.usuario)}`);
     if (filtro.reposicao !== undefined) where.push(`reposicao = ${bind(filtro.reposicao)}`);
     if (filtro.tipo === 'ESTORNO') where.push('estorno_de IS NOT NULL');
-    if (filtro.tipo === 'BAIXA') where.push('estorno_de IS NULL');
+    if (filtro.tipo === 'ENTRADA') where.push(`tipo = 'ENTRADA'`);
+    if (filtro.tipo === 'BAIXA') where.push(`tipo <> 'ENTRADA' AND estorno_de IS NULL`);
 
     const res = await client.query(
       `SELECT * FROM goldbox_movements WHERE ${where.join(' AND ')} ORDER BY data_hora DESC LIMIT 500`,

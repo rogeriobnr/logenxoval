@@ -196,13 +196,29 @@ export const estornoBodySchema = z.object({
   matriculaConfirmacao: matriculaSchema.optional(),
 });
 
+/** Entrada de material no enxoval (reposição recebida — credita o saldo e fecha divergência REPOSICAO). */
+export const entradaMaterialBodySchema = z.object({
+  operationId,
+  codigoSap: codigoSapSchema,
+  materialId: z.string().optional(),
+  descricao: z.string().trim().max(200).optional(),
+  quantidade: quantidadeSchema,
+  observacao: z.string().trim().max(300).optional(),
+  origem: z.enum(['ONLINE', 'OFFLINE']),
+  dispositivo: z.string().min(1),
+  dataHora: iso,
+  assinaturaMatricula: z.string().min(3),
+  /** Confirmação crítica digitada pelo usuário — validada contra o usuário logado. */
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
 export const goldboxQuerySchema = z.object({
   dataIni: iso.optional(),
   dataFim: iso.optional(),
   codigoSap: codigoSapSchema.optional(),
   usuario: matriculaSchema.optional(),
   reposicao: z.enum(['true', 'false']).optional(),
-  tipo: z.enum(['BAIXA', 'ESTORNO']).optional(),
+  tipo: z.enum(['BAIXA', 'ESTORNO', 'ENTRADA']).optional(),
 });
 
 export const logsQuerySchema = z.object({
@@ -219,6 +235,11 @@ export type LogsQuery = z.infer<typeof logsQuerySchema>;
 export const syncPayloadBaixaSchema = baixaBodySchema.omit({ operationId: true }).extend({
   depositoId: z.string().min(1),
 });
+
+/** Payload de uma entrada de material (reposição de enxoval) enviada pela fila offline. */
+export const syncPayloadEntradaMaterialSchema = entradaMaterialBodySchema
+  .omit({ operationId: true })
+  .extend({ depositoId: z.string().min(1) });
 
 // ---------------------------------------------------------------------------
 // Peças avulsas e sugestões de conversão
@@ -298,6 +319,27 @@ export const requestItemSchema = z.object({
   qtd: z.number().int().positive(),
 });
 
+/**
+ * Entrada (recebimento) de consumível ou EPI. O item é criado no catálogo se o
+ * código ainda não existir no depósito (docs 16). O payload é de UM item por
+ * operação — mantém a idempotência por operation_id das tabelas de movimentos.
+ */
+export const estoqueEntradaBodySchema = z.object({
+  operationId,
+  tipo: z.enum(['CONSUMIVEL', 'EPI']),
+  codigo: z.string().trim().min(1).max(40),
+  descricao: z.string().trim().min(1).max(200),
+  unidade: z.string().trim().max(20).optional(),
+  estoqueMinimo: z.number().int().min(0).optional(),
+  quantidade: quantidadeSchema,
+  observacao: z.string().trim().max(300).optional(),
+  origem: z.enum(['ONLINE', 'OFFLINE']),
+  dispositivo: z.string().min(1),
+  dataHora: iso,
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
 export const solicitacaoCreateBodySchema = z.object({
   operationId,
   tipo: z.enum([SOLICITACAO_TIPO.CONSUMIVEL, SOLICITACAO_TIPO.EPI]),
@@ -339,6 +381,10 @@ export const syncPayloadSolicitacaoTransitionSchema = solicitacaoTransitionBodyS
     requestId: z.string().min(1),
   });
 
+export const syncPayloadEntradaEstoqueSchema = estoqueEntradaBodySchema
+  .omit({ operationId: true })
+  .extend({ depositoId: z.string().min(1) });
+
 export const syncOperationSchema = z.object({
   operationId,
   entidade: z.enum([
@@ -349,6 +395,8 @@ export const syncOperationSchema = z.object({
     'SUGESTAO_RECUSADA',
     'SOLICITACAO',
     'SOLICITACAO_TRANSICAO',
+    'ENTRADA_MATERIAL',
+    'ENTRADA_ESTOQUE',
   ]),
   acao: z.enum(['CREATE']),
   payload: z.unknown(),

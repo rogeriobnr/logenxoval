@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import type { GoldboxMovementRow, InventoryItemRow } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toasts';
 import { assinarMatricula } from '../lib/assinatura';
 import { analisarBaixa } from '../lib/goldbox';
-import { listInventoryItemsLocal, listMovimentosLocais, registrarBaixaOffline } from '../repos/local';
+import { listInventoryItemsLocal, listMovimentosLocais, registrarBaixaOffline, registrarEntradaMaterialOffline } from '../repos/local';
 import { espelharEnxoval } from '../services/sync';
 
-type Tab = 'baixa' | 'historico';
+type Tab = 'baixa' | 'historico' | 'entrada';
 
 interface BaixaResult {
   jaProcessada: boolean;
@@ -15,8 +17,15 @@ interface BaixaResult {
   divergenciaCriada: boolean;
 }
 
+interface EntradaResult {
+  jaProcessada: boolean;
+  saldo: number;
+  divergenciasFechadas: number;
+}
+
 export function GoldboxScreen() {
   const { api, session, deviceId } = useAuth();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>('baixa');
 
   const [itens, setItens] = useState<InventoryItemRow[]>([]);
@@ -25,7 +34,6 @@ export function GoldboxScreen() {
   const [descricao, setDescricao] = useState('');
   const [quantidade, setQuantidade] = useState('1');
   const [reposicao, setReposicao] = useState(true);
-  const [msg, setMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [movs, setMovs] = useState<GoldboxMovementRow[]>([]);
@@ -35,16 +43,20 @@ export function GoldboxScreen() {
   const [fUsuario, setFUsuario] = useState('');
   const [fReposicao, setFReposicao] = useState('');
   const [fTipo, setFTipo] = useState('');
-  const [histMsg, setHistMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
+  const [histInfo, setHistInfo] = useState<string | null>(null);
 
   const [estornoAlvo, setEstornoAlvo] = useState<GoldboxMovementRow | null>(null);
   const [estornoMotivo, setEstornoMotivo] = useState('');
   const [estornoPin, setEstornoPin] = useState('');
   const [estornoBusy, setEstornoBusy] = useState(false);
 
+  const [entObservacao, setEntObservacao] = useState('');
+  const [entBusy, setEntBusy] = useState(false);
+
   const depositoId = session?.depositoAtivo?.id ?? '';
   const perfil = session?.perfil ?? '';
   const podeEstornar = perfil === 'LIDER' || perfil === 'ADMIN';
+  const podeEntrada = perfil === 'LIDER' || perfil === 'ADMIN';
 
   const carregar = useCallback(async () => {
     if (!depositoId) return;
@@ -82,7 +94,6 @@ export function GoldboxScreen() {
     setCodigoSap(i.codigoSap);
     setDescricao(i.textoBreve);
     setBusca('');
-    setMsg(null);
   };
 
   const itemAtivo = useMemo(() => {
@@ -96,15 +107,14 @@ export function GoldboxScreen() {
   const registrarBaixa = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    setMsg(null);
     if (!codigoSap.trim()) {
-      setMsg({ kind: 'error', text: 'Selecione um item do enxoval.' });
+      toast.error('Selecione um item do enxoval.');
       setBusy(false);
       return;
     }
     const qty = Number(quantidade);
     if (!Number.isFinite(qty) || qty <= 0) {
-      setMsg({ kind: 'error', text: 'Quantidade precisa ser maior que zero.' });
+      toast.error('Quantidade precisa ser maior que zero.');
       setBusy(false);
       return;
     }
@@ -125,7 +135,7 @@ export function GoldboxScreen() {
         assinaturaMatricula: assinatura,
       });
       setQuantidade('1');
-      setMsg({ kind: 'info', text: 'Baixa registrada no dispositivo (offline). Será enviada quando houver conexão.' });
+      toast.success('Baixa registrada no dispositivo (offline). Será enviada quando houver conexão.');
       await carregar();
       setBusy(false);
       return;
@@ -145,25 +155,102 @@ export function GoldboxScreen() {
         matriculaConfirmacao: session.matricula,
       });
       setQuantidade('1');
-      setMsg({
-        kind: 'info',
-        text:
-          res.jaProcessada
-            ? 'Operação já processada anteriormente (idempotente).'
-            : `Baixa registrada. Novo saldo: ${res.saldo} ${res.divergenciaCriada ? '· criada divergência de saldo negativo!' : ''}`,
-      });
+      toast.success(
+        res.jaProcessada
+          ? 'Operação já processada anteriormente (idempotente).'
+          : `Baixa registrada. Novo saldo: ${res.saldo} ${res.divergenciaCriada ? '· criada divergência de saldo negativo!' : ''}`,
+      );
       await carregar();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao registrar baixa.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao registrar baixa.');
     }
     setBusy(false);
   };
 
+  const registrarEntrada = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!podeEntrada) {
+      toast.error('Entrada de material exige perfil Líder ou Admin.');
+      return;
+    }
+    setEntBusy(true);
+    if (!codigoSap.trim()) {
+      toast.error('Selecione um item do enxoval.');
+      setEntBusy(false);
+      return;
+    }
+    const qty = Number(quantidade);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error('Quantidade precisa ser maior que zero.');
+      setEntBusy(false);
+      return;
+    }
+    const observacao = entObservacao.trim() || undefined;
+    if (!navigator.onLine) {
+      const assinatura = await assinarMatricula(session.matricula);
+      await registrarEntradaMaterialOffline({
+        operationId: crypto.randomUUID(),
+        depositoId,
+        codigoSap: codigoSap.trim(),
+        descricao: descricao.trim() || undefined,
+        quantidade: qty,
+        observacao,
+        dataHora: new Date().toISOString(),
+        usuarioId: session.userId,
+        nomeCompleto: session.nomeCompleto,
+        matricula: session.matricula,
+        dispositivo: deviceId,
+        assinaturaMatricula: assinatura,
+      });
+      setQuantidade('1');
+      toast.success('Entrada registrada no dispositivo (offline). Será enviada quando houver conexão.');
+      await carregar();
+      setEntBusy(false);
+      return;
+    }
+    try {
+      const assinatura = await assinarMatricula(session.matricula);
+      const res = await api.request<{ entrada: GoldboxMovementRow } & EntradaResult>(
+        'POST',
+        `/deposits/${depositoId}/goldbox/entrada`,
+        {
+          operationId: crypto.randomUUID(),
+          codigoSap: codigoSap.trim(),
+          descricao: descricao.trim() || undefined,
+          quantidade: qty,
+          observacao,
+          origem: 'ONLINE',
+          dispositivo: deviceId,
+          dataHora: new Date().toISOString(),
+          assinaturaMatricula: assinatura,
+          matriculaConfirmacao: session.matricula,
+        },
+      );
+      setQuantidade('1');
+      toast.success(
+        res.jaProcessada
+          ? 'Operação já processada anteriormente (idempotente).'
+          : `Entrada registrada. Novo saldo: ${res.saldo}${res.divergenciasFechadas > 0 ? ` · ${res.divergenciasFechadas} divergência(s) de REPOSICAO resolvida(s)` : ''}`,
+      );
+      await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao registrar entrada.');
+    }
+    setEntBusy(false);
+  };
+
   const carregarHistorico = async () => {
-    setHistMsg(null);
+    setHistInfo(null);
     if (!navigator.onLine) {
       const locais = await listMovimentosLocais(depositoId);
-      const tipos = fTipo ? (fTipo === 'ESTORNO' ? (m: GoldboxMovementRow) => !!m.estornoDe : (m: GoldboxMovementRow) => !m.estornoDe) : () => true;
+      const tipos =
+        fTipo === 'ESTORNO'
+          ? (m: GoldboxMovementRow) => !!m.estornoDe
+          : fTipo === 'ENTRADA'
+            ? (m: GoldboxMovementRow) => m.tipo === 'ENTRADA'
+            : fTipo === 'BAIXA'
+              ? (m: GoldboxMovementRow) => !m.estornoDe && m.tipo !== 'ENTRADA'
+              : () => true;
       setMovs(
         locais.filter(
           (m) =>
@@ -173,7 +260,7 @@ export function GoldboxScreen() {
             (!fReposicao || (m.reposicao === (fReposicao === 'true'))),
         ),
       );
-      setHistMsg({ kind: 'info', text: 'Modo offline — exibindo movimentações locais (incl. pendentes).' });
+      setHistInfo('Modo offline — exibindo movimentações locais (incl. pendentes).');
       return;
     }
     try {
@@ -189,9 +276,9 @@ export function GoldboxScreen() {
         `/deposits/${depositoId}/goldbox${q.toString() ? `?${q.toString()}` : ''}`,
       );
       setMovs(res.movimentos);
-      setHistMsg({ kind: 'info', text: `${res.movimentos.length} movimento(s) encontrados.` });
+      setHistInfo(`${res.movimentos.length} movimento(s) encontrados.`);
     } catch (err) {
-      setHistMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao carregar histórico.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao carregar histórico.');
     }
   };
 
@@ -201,15 +288,13 @@ export function GoldboxScreen() {
     setEstornoPin('');
   };
 
-  const confirmarEstorno = async (e: FormEvent) => {
-    e.preventDefault();
+  const confirmarEstorno = async () => {
     if (!estornoAlvo) return;
     if (!navigator.onLine) {
-      setHistMsg({ kind: 'error', text: 'Estorno requer conexão — baixe os estornos na fase 05 ficam online.' });
+      toast.error('Estorno requer conexão — baixe os estornos na fase 05 ficam online.');
       return;
     }
     setEstornoBusy(true);
-    setHistMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
       await api.request('POST', `/deposits/${depositoId}/goldbox/estorno`, {
@@ -221,11 +306,11 @@ export function GoldboxScreen() {
         matriculaConfirmacao: session.matricula,
       });
       abortarEstorno();
-      setHistMsg({ kind: 'info', text: 'Estorno registrado e saldo ajustado.' });
+      toast.success('Estorno registrado e saldo ajustado.');
       await carregar();
       await carregarHistorico();
     } catch (err) {
-      setHistMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao estornar.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao estornar.');
     }
     setEstornoBusy(false);
   };
@@ -243,6 +328,11 @@ export function GoldboxScreen() {
         <Btn variant={tab === 'baixa' ? 'primary' : 'ghost'} className="small" onClick={() => setTab('baixa')}>
           Registrar baixa
         </Btn>
+        {podeEntrada && (
+          <Btn variant={tab === 'entrada' ? 'primary' : 'ghost'} className="small" onClick={() => setTab('entrada')}>
+            Receber entrada
+          </Btn>
+        )}
         <Btn variant={tab === 'historico' ? 'primary' : 'ghost'} className="small" onClick={() => setTab('historico')}>
           Histórico
         </Btn>
@@ -311,10 +401,57 @@ export function GoldboxScreen() {
               <input type="checkbox" checked={reposicao} onChange={(e) => setReposicao(e.target.checked)} />
               É reposição
             </label>
-            {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
             <div style={{ marginTop: '0.6rem' }}>
               <Btn type="submit" disabled={busy}>
                 {busy ? 'Registrando…' : 'Registrar baixa'}
+              </Btn>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {tab === 'entrada' && (
+        <div className="card">
+          <h3>Entrada de material (reposição recebida)</h3>
+          <label className="list-sub" role="alert">
+            Credita o saldo do item e resolve divergências REPOSICAO pendentes do almoxarifado.
+          </label>
+          <Field
+            id="ent-busca"
+            label="Buscar item do enxoval"
+            placeholder="Código SAP, descrição ou material"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+          {busca && (
+            <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px' }}>
+              {abertos.length === 0 && <div className="list-sub" style={{ padding: '0.5rem' }}>Nada encontrado.</div>}
+              {abertos.slice(0, 12).map((i) => (
+                <button key={i.id} type="button" className="list-item" style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }} onClick={() => selecionarItem(i)}>
+                  <div>
+                    <div className="list-title">{i.codigoSap} · {i.textoBreve}</div>
+                    <div className="list-sub">saldo {i.qtdAtual} / oficial {i.qtdOficial} {i.unidadeMedida ?? ''}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          <form onSubmit={registrarEntrada}>
+            <Field id="ent-sap" label="Código SAP" value={codigoSap} onChange={(e) => setCodigoSap(e.target.value)} required placeholder="1002341" />
+            <Field id="ent-desc" label="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Opcional" />
+            <Field id="ent-qtd" label="Quantidade recebida" type="number" min="0" step="any" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} required />
+            <Field id="ent-obs" label="Observação" value={entObservacao} onChange={(e) => setEntObservacao(e.target.value)} placeholder="Opcional (ex.: NF 12345)" />
+            {itemAtivo && (
+              <div style={{ marginTop: '0.4rem', padding: '0.4rem 0.6rem', border: '1px solid var(--line)', borderRadius: '8px' }}>
+                <span className="list-sub">
+                  Saldo atual: <b>{itemAtivo.qtdAtual}</b> {itemAtivo.unidadeMedida ?? ''} · após a entrada:{' '}
+                  <b>{itemAtivo.qtdAtual + (Number.isFinite(Number(quantidade)) ? Number(quantidade) : 0)}</b>
+                </span>
+              </div>
+            )}
+            <div style={{ marginTop: '0.6rem' }}>
+              <Btn type="submit" disabled={entBusy}>
+                {entBusy ? 'Registrando…' : 'Registrar entrada'}
               </Btn>
             </div>
           </form>
@@ -337,25 +474,14 @@ export function GoldboxScreen() {
             <label className="list-sub">Tipo<select id="f-tipo" value={fTipo} onChange={(e) => setFTipo(e.target.value)} style={{ display: 'block', marginTop: '0.2rem' }}>
               <option value="">Todos</option>
               <option value="BAIXA">Baixa</option>
+              <option value="ENTRADA">Entrada</option>
               <option value="ESTORNO">Estorno</option>
             </select></label>
           </div>
           <Btn className="small" style={{ marginTop: '0.6rem' }} onClick={() => void carregarHistorico()} disabled={busy}>
             Buscar
           </Btn>
-          {histMsg && <Alert kind={histMsg.kind}><span role="alert">{histMsg.text}</span></Alert>}
-
-          {estornoAlvo && (
-            <form onSubmit={confirmarEstorno} className="card" style={{ marginTop: '0.8rem', background: 'transparent' }}>
-              <div className="list-title">Estornar baixa de {estornoAlvo.codigoSap} (qtd {estornoAlvo.quantidade})</div>
-              <Field id="es-motivo" label="Motivo do estorno" value={estornoMotivo} onChange={(e) => setEstornoMotivo(e.target.value)} required placeholder="Ex.: conferência física divergiu" />
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                <Field id="es-pin" label="PIN (se exigido em Configurações)" type="password" value={estornoPin} onChange={(e) => setEstornoPin(e.target.value)} />
-                <Btn type="submit" variant="danger" disabled={estornoBusy}>{estornoBusy ? 'Estornando…' : 'Confirmar estorno'}</Btn>
-                <Btn type="button" variant="ghost" className="small" onClick={abortarEstorno}>Cancelar</Btn>
-              </div>
-            </form>
-          )}
+          {histInfo && <Alert kind="info"><span role="alert">{histInfo}</span></Alert>}
 
           <div style={{ marginTop: '0.8rem' }}>
             {movs.length === 0 && <div className="list-sub">Nenhum movimento para os filtros informados.</div>}
@@ -363,16 +489,16 @@ export function GoldboxScreen() {
               <div key={m.id} className="list-item">
                 <div>
                   <div className="list-title">
-                    {m.estornoDe ? 'Estorno' : 'Baixa'} · {m.codigoSap} {m.descricao ? `· ${m.descricao}` : ''}
+                    {m.tipo === 'ENTRADA' ? 'Entrada' : m.estornoDe ? 'Estorno' : 'Baixa'} · {m.codigoSap} {m.descricao ? `· ${m.descricao}` : ''}
                   </div>
                   <div className="list-sub">
-                    {inicioDoDia(m.dataHora)} · {m.nomeCompleto} ({m.matricula}) · {m.reposicao ? 'reposição' : 'uso'} · {m.origem}
+                    {inicioDoDia(m.dataHora)} · {m.nomeCompleto} ({m.matricula}) · {m.tipo === 'ENTRADA' ? 'recebimento' : m.reposicao ? 'reposição' : 'uso'} · {m.origem}
                     {m.estornoDe && ` · estorno de ${m.estornoDe}`}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
-                  <div className={m.estornoDe ? 'list-title ok' : 'list-title warn'} style={{ fontWeight: 600 }}>{m.quantidade}</div>
-                  {podeEstornar && !m.estornoDe && (
+                  <div className={m.tipo === 'ENTRADA' ? 'list-title ok' : m.estornoDe ? 'list-title ok' : 'list-title warn'} style={{ fontWeight: 600 }}>{m.quantidade}</div>
+                  {podeEstornar && !m.estornoDe && m.tipo !== 'ENTRADA' && (
                     <Btn variant="ghost" className="small" onClick={() => { setEstornoAlvo(m); setEstornoMotivo(''); }}>
                       Estornar
                     </Btn>
@@ -383,6 +509,20 @@ export function GoldboxScreen() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={estornoAlvo !== null}
+        title="Confirmar estorno"
+        message={`Estornar a baixa de ${estornoAlvo?.codigoSap} (qtd ${estornoAlvo?.quantidade})?`}
+        confirmLabel="Confirmar estorno"
+        danger
+        busy={estornoBusy}
+        onConfirm={() => void confirmarEstorno()}
+        onCancel={abortarEstorno}
+      >
+        <Field id="es-motivo" label="Motivo do estorno" value={estornoMotivo} onChange={(e) => setEstornoMotivo(e.target.value)} required autoFocus placeholder="Ex.: conferência física divergiu" />
+        <Field id="es-pin" label="PIN (se exigido em Configurações)" type="password" value={estornoPin} onChange={(e) => setEstornoPin(e.target.value)} />
+      </ConfirmDialog>
     </div>
   );
 }

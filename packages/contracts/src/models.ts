@@ -97,6 +97,8 @@ export interface GoldboxMovementRow {
   nomeCompleto: string;
   matricula: string;
   reposicao: boolean;
+  /** BAIXA (débito) ou ENTRADA (crédito de reposição/recebimento). */
+  tipo?: 'BAIXA' | 'ENTRADA';
   origem: OrigemMovimentacao;
   dispositivo: string;
   statusSync?: 'ENVIADO' | 'PENDENTE';

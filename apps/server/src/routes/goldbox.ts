@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { baixaBodySchema, estornoBodySchema, goldboxQuerySchema } from '@logenxoval/contracts';
+import { baixaBodySchema, entradaMaterialBodySchema, estornoBodySchema, goldboxQuerySchema } from '@logenxoval/contracts';
 import { authenticate, requireAcao, requireDepositoAcesso } from '../plugins/auth';
 import { validateBody } from '../lib/validator';
 import { zodToAppError } from '../lib/errors';
@@ -57,6 +57,33 @@ export async function registerGoldboxRoutes(app: FastifyInstance): Promise<void>
         baixa: res.movimento,
         saldo: res.saldo,
         divergenciaCriada: res.divergenciaCriada,
+        jaProcessada: res.jaProcessada,
+      };
+    },
+  );
+
+  app.post(
+    '/deposits/:depositoId/goldbox/entrada',
+    {
+      preHandler: [requireAcao('ENTRADA_MATERIAL'), requireDepositoAcesso()],
+      ...validateBody(entradaMaterialBodySchema),
+    },
+    async (req) => {
+      const body = req.body as typeof entradaMaterialBodySchema._type;
+      const { depositoId } = req.params as { depositoId: string };
+      const res = await goldboxService.registrarEntrada(
+        {
+          app,
+          authUser: req.authUser!,
+          dispositivo: (req.headers['x-device-id'] as string) ?? 'api',
+          origem: 'ONLINE',
+        },
+        { ...body, depositoId },
+      );
+      return {
+        entrada: res.movimento,
+        saldo: res.saldo,
+        divergenciasFechadas: res.divergenciasFechadas,
         jaProcessada: res.jaProcessada,
       };
     },

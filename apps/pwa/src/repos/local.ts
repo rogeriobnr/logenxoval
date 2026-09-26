@@ -168,6 +168,76 @@ export async function listMovimentosLocais(depositoId: string): Promise<GoldboxM
   return locais.reverse();
 }
 
+export interface EntradaMaterialOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  codigoSap: string;
+  descricao?: string;
+  quantidade: number;
+  observacao?: string;
+  dataHora: string;
+  usuarioId: string;
+  nomeCompleto: string;
+  matricula: string;
+  dispositivo: string;
+  assinaturaMatricula: string;
+}
+
+/**
+ * Entrada de material (reposição recebida) offline: movimento local tipo ENTRADA,
+ * crédito otimista no saldo local e item na fila (docs 16).
+ */
+export async function registrarEntradaMaterialOffline(args: EntradaMaterialOfflineArgs): Promise<void> {
+  const movimento: GoldboxMovementRow = {
+    id: args.operationId,
+    operationId: args.operationId,
+    depositoId: args.depositoId,
+    codigoSap: args.codigoSap,
+    descricao: args.descricao,
+    quantidade: args.quantidade,
+    dataHora: args.dataHora,
+    usuarioId: args.usuarioId,
+    nomeCompleto: args.nomeCompleto,
+    matricula: args.matricula,
+    reposicao: false,
+    tipo: 'ENTRADA',
+    origem: 'OFFLINE',
+    dispositivo: args.dispositivo,
+    statusSync: 'PENDENTE',
+    assinaturaMatricula: args.assinaturaMatricula,
+  };
+  const fila: SyncQueueRow = {
+    id: args.operationId,
+    operationId: args.operationId,
+    entidade: 'ENTRADA_MATERIAL',
+    acao: 'CREATE',
+    payload: {
+      depositoId: args.depositoId,
+      codigoSap: args.codigoSap,
+      descricao: args.descricao,
+      quantidade: args.quantidade,
+      observacao: args.observacao,
+      origem: 'OFFLINE',
+      dispositivo: args.dispositivo,
+      dataHora: args.dataHora,
+      assinaturaMatricula: args.assinaturaMatricula,
+      matriculaConfirmacao: args.matricula,
+    },
+    criadoEm: args.dataHora,
+    tentativas: 0,
+    proximaTentativaEm: args.dataHora,
+    status: 'PENDENTE',
+  };
+  await db.transaction('rw', [db.goldboxMovements, db.inventoryItems, db.syncQueue], async () => {
+    await db.goldboxMovements.put(movimento);
+    const item = await db.inventoryItems.where('[depositoId+codigoSap]').equals([args.depositoId, args.codigoSap]).first();
+    if (item) {
+      await db.inventoryItems.put({ ...item, qtdAtual: item.qtdAtual + args.quantidade });
+    }
+    await db.syncQueue.put(fila);
+  });
+}
+
 export async function listDivergenciasAbertas(depositoId?: string): Promise<DivergenceRow[]> {
   const base = depositoId ? db.divergences.where('depositoId').equals(depositoId) : db.divergences;
   return (await base.toArray()).filter((d) => d.status === 'ABERTA');
@@ -568,12 +638,104 @@ export async function upsertRequests(requests: RequestRow[]): Promise<void> {
 
 export async function listConsumiveisLocal(depositoId: string): Promise<ConsumableRow[]> {
   const rows = await db.consumables.where('depositoId').equals(depositoId).toArray();
-  return rows.sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const porCodigo = new Map<string, ConsumableRow>();
+  for (const c of rows) {
+    const atual = porCodigo.get(c.codigo);
+    if (!atual) {
+      porCodigo.set(c.codigo, c);
+      continue;
+    }
+    const preferido = c.id.startsWith(LOCAL_ID);
+    const atualPreferido = atual.id.startsWith(LOCAL_ID);
+    if (!preferido && atualPreferido) porCodigo.set(c.codigo, c);
+    else if (preferido === atualPreferido && !atualPreferido) porCodigo.set(c.codigo, c);
+  }
+  return Array.from(porCodigo.values()).sort((a, b) => a.codigo.localeCompare(b.codigo));
 }
 
 export async function listPpeLocal(depositoId: string): Promise<PpeItemRow[]> {
   const rows = await db.ppeItems.where('depositoId').equals(depositoId).toArray();
-  return rows.sort((a, b) => a.codigo.localeCompare(b.codigo));
+  const porCodigo = new Map<string, PpeItemRow>();
+  for (const p of rows) {
+    const atual = porCodigo.get(p.codigo);
+    if (!atual) {
+      porCodigo.set(p.codigo, p);
+      continue;
+    }
+    const preferido = p.id.startsWith(LOCAL_ID);
+    const atualPreferido = atual.id.startsWith(LOCAL_ID);
+    if (!preferido && atualPreferido) porCodigo.set(p.codigo, p);
+    else if (preferido === atualPreferido && !atualPreferido) porCodigo.set(p.codigo, p);
+  }
+  return Array.from(porCodigo.values()).sort((a, b) => a.codigo.localeCompare(b.codigo));
+}
+
+export interface EntradaEstoqueOfflineArgs {
+  operationId: string;
+  depositoId: string;
+  tipo: 'CONSUMIVEL' | 'EPI';
+  codigo: string;
+  descricao: string;
+  unidade?: string;
+  estoqueMinimo?: number;
+  quantidade: number;
+  observacao?: string;
+  dataHora: string;
+  usuarioId: string;
+  matricula: string;
+  dispositivo: string;
+  assinaturaMatricula: string;
+}
+
+/**
+ * Entrada (recebimento) de consumível/EPI offline: credita o estoque local
+ * (criando o item com id `local:...` se for novo) e enfileira o sync (docs 16).
+ */
+export async function registrarEntradaEstoqueOffline(args: EntradaEstoqueOfflineArgs): Promise<void> {
+  const localId = `${LOCAL_ID}${args.codigo}`;
+  await db.transaction('rw', [db.consumables, db.ppeItems, db.syncQueue], async () => {
+    if (args.tipo === 'CONSUMIVEL') {
+      const atual = await db.consumables.where('[depositoId+codigo]').equals([args.depositoId, args.codigo]).first();
+      await db.consumables.put({
+        id: atual?.id ?? localId,
+        depositoId: args.depositoId,
+        codigo: args.codigo,
+        descricao: args.descricao || (atual?.descricao ?? ''),
+        quantidade: (atual?.quantidade ?? 0) + args.quantidade,
+        unidade: args.unidade ?? atual?.unidade ?? 'unidade',
+        estoqueAtual: (atual?.estoqueAtual ?? 0) + args.quantidade,
+        estoqueMinimo: atual?.estoqueMinimo ?? args.estoqueMinimo ?? 0,
+        historico: atual?.historico ?? [],
+      });
+    } else {
+      const atual = await db.ppeItems.where('[depositoId+codigo]').equals([args.depositoId, args.codigo]).first();
+      await db.ppeItems.put({
+        id: atual?.id ?? localId,
+        depositoId: args.depositoId,
+        codigo: args.codigo,
+        descricao: args.descricao || (atual?.descricao ?? ''),
+        quantidade: (atual?.quantidade ?? 0) + args.quantidade,
+        unidade: 'unidade',
+        estoqueAtual: (atual?.estoqueAtual ?? 0) + args.quantidade,
+        estoqueMinimo: atual?.estoqueMinimo ?? args.estoqueMinimo ?? 0,
+        historico: atual?.historico ?? [],
+      });
+    }
+    await db.syncQueue.put(enfileirar(args, 'ENTRADA_ESTOQUE', args.dataHora, {
+      tipo: args.tipo,
+      codigo: args.codigo,
+      descricao: args.descricao,
+      unidade: args.unidade,
+      estoqueMinimo: args.estoqueMinimo,
+      quantidade: args.quantidade,
+      observacao: args.observacao,
+      origem: 'OFFLINE',
+      dispositivo: args.dispositivo,
+      dataHora: args.dataHora,
+      assinaturaMatricula: args.assinaturaMatricula,
+      matriculaConfirmacao: args.matricula,
+    }));
+  });
 }
 
 export async function listRequestsLocal(depositoId: string): Promise<RequestRow[]> {

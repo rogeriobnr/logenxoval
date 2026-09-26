@@ -5,6 +5,8 @@ export type Acao =
   | 'CONFERENCIA'
   | 'CORRECAO'
   | 'ESTORNO'
+  | 'ENTRADA_MATERIAL'
+  | 'ENTRADA_ESTOQUE'
   | 'CRIAR_DEPOSITO'
   | 'EDITAR_DEPOSITO'
   | 'DESATIVAR_DEPOSITO'
@@ -25,6 +27,8 @@ export const ACTION_REQUIRES_MATRICULA = new Set<Acao>([
   'CONFERENCIA',
   'CORRECAO',
   'ESTORNO',
+  'ENTRADA_MATERIAL',
+  'ENTRADA_ESTOQUE',
   'IMPORTAR_ENXOVAL',
   'PUBLICAR_ENXOVAL',
   'RESTAURAR',
@@ -53,6 +57,8 @@ const PERMISSOES: Record<Perfil, Record<Acao, boolean>> = {
     CONFERENCIA: true,
     CORRECAO: true,
     ESTORNO: false,
+    ENTRADA_MATERIAL: false,
+    ENTRADA_ESTOQUE: false,
     CRIAR_DEPOSITO: false,
     EDITAR_DEPOSITO: false,
     DESATIVAR_DEPOSITO: false,
@@ -73,6 +79,8 @@ const PERMISSOES: Record<Perfil, Record<Acao, boolean>> = {
     CONFERENCIA: true,
     CORRECAO: true,
     ESTORNO: true,
+    ENTRADA_MATERIAL: true,
+    ENTRADA_ESTOQUE: true,
     CRIAR_DEPOSITO: true,
     EDITAR_DEPOSITO: true,
     DESATIVAR_DEPOSITO: true,
@@ -93,6 +101,8 @@ const PERMISSOES: Record<Perfil, Record<Acao, boolean>> = {
     CONFERENCIA: true,
     CORRECAO: true,
     ESTORNO: true,
+    ENTRADA_MATERIAL: true,
+    ENTRADA_ESTOQUE: true,
     CRIAR_DEPOSITO: true,
     EDITAR_DEPOSITO: true,
     DESATIVAR_DEPOSITO: true,

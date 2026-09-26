@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { solicitacaoCreateBodySchema, solicitacaoTransitionBodySchema } from '@logenxoval/contracts';
-import { authenticate, requireDepositoAcesso } from '../plugins/auth';
+import { estoqueEntradaBodySchema, solicitacaoCreateBodySchema, solicitacaoTransitionBodySchema } from '@logenxoval/contracts';
+import { authenticate, requireAcao, requireDepositoAcesso } from '../plugins/auth';
 import { validateBody } from '../lib/validator';
 import { listarConsumiveis, listarMovimentosConsumivel, listarMovimentosPpe, listarPpeItems } from '../repos/estoqueRepo';
 import { listarSolicitacoes } from '../repos/requestRepo';
+import * as estoqueService from '../services/estoqueService';
 import * as requestService from '../services/requestService';
 
 export async function registerEstoqueRoutes(app: FastifyInstance): Promise<void> {
@@ -45,6 +46,38 @@ export async function registerEstoqueRoutes(app: FastifyInstance): Promise<void>
     );
     return { solicitacoes };
   });
+
+  app.post(
+    '/deposits/:depositoId/estoque/entrada',
+    {
+      preHandler: [requireAcao('ENTRADA_ESTOQUE'), requireDepositoAcesso()],
+      ...validateBody(estoqueEntradaBodySchema),
+    },
+    async (req) => {
+      const body = req.body as typeof estoqueEntradaBodySchema._type;
+      const { depositoId } = req.params as { depositoId: string };
+      const res = await estoqueService.registrarEntradaEstoque(
+        {
+          app,
+          authUser: req.authUser!,
+          dispositivo: (req.headers['x-device-id'] as string) ?? 'api',
+          origem: 'ONLINE',
+        },
+        {
+          ...body,
+          depositoId,
+          operationId: body.operationId,
+          origem: body.origem,
+        },
+      );
+      return {
+        entrada: { itemId: res.itemId, codigo: res.codigo, saldo: res.saldo, criado: res.criado },
+        criado: res.criado,
+        saldo: res.saldo,
+        jaProcessada: res.jaProcessada,
+      };
+    },
+  );
 
   app.post(
     '/deposits/:depositoId/requests',

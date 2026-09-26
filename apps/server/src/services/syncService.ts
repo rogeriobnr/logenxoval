@@ -3,6 +3,8 @@ import type { Perfil } from '@logenxoval/contracts';
 import {
   syncBodySchema,
   syncPayloadBaixaSchema,
+  syncPayloadEntradaEstoqueSchema,
+  syncPayloadEntradaMaterialSchema,
   syncPayloadSolicitacaoSchema,
   syncPayloadSolicitacaoTransitionSchema,
   syncPayloadSparePartEntradaSchema,
@@ -11,7 +13,8 @@ import {
 } from '@logenxoval/contracts';
 import { AppError } from '../lib/errors';
 import { userHasDepositAccess } from '../repos/depositsRepo';
-import { registrarBaixa } from './goldboxService';
+import { registrarBaixa, registrarEntrada } from './goldboxService';
+import { registrarEntradaEstoque } from './estoqueService';
 import { registrarEntradaPeca, movimentarPecaAvulsa } from './spareService';
 import { responderSugestaoConversao } from './suggestionService';
 import { registrarSolicitacao, transicionarSolicitacaoService } from './requestService';
@@ -119,6 +122,64 @@ export async function processarSync(deps: SyncDeps, body: typeof syncBodySchema.
             matriculaConfirmacao: p.data.matriculaConfirmacao,
           });
           acks.push({ operationId: op.operationId, status: 'OK' });
+          break;
+        }
+        case 'ENTRADA_MATERIAL': {
+          const p = syncPayloadEntradaMaterialSchema.safeParse(op.payload);
+          if (!p.success) {
+            throw new AppError('VALIDATION_FAILED', 'Payload inválido na operação de entrada de material', 400);
+          }
+          if (p.data.depositoId !== body.depositoId) {
+            throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
+          }
+          if (deps.authUser.perfil === 'MECANICO') {
+            throw new AppError('PERMISSAO_NEGADA', 'Entrada de material exige LIDER ou ADMIN', 403);
+          }
+          const res = await registrarEntrada(ctx, {
+            depositoId: body.depositoId,
+            operationId: op.operationId,
+            codigoSap: p.data.codigoSap,
+            materialId: p.data.materialId,
+            descricao: p.data.descricao,
+            quantidade: p.data.quantidade,
+            observacao: p.data.observacao,
+            origem: 'OFFLINE',
+            dispositivo: deps.dispositivo,
+            dataHora: p.data.dataHora,
+            assinaturaMatricula: p.data.assinaturaMatricula,
+            matriculaConfirmacao: p.data.matriculaConfirmacao,
+          });
+          acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
+          break;
+        }
+        case 'ENTRADA_ESTOQUE': {
+          const p = syncPayloadEntradaEstoqueSchema.safeParse(op.payload);
+          if (!p.success) {
+            throw new AppError('VALIDATION_FAILED', 'Payload inválido na operação de entrada de consumível/EPI', 400);
+          }
+          if (p.data.depositoId !== body.depositoId) {
+            throw new AppError('DEPOSITO_NAO_AUTORIZADO', 'depositoId da operação diverge do lote', 403);
+          }
+          if (deps.authUser.perfil === 'MECANICO') {
+            throw new AppError('PERMISSAO_NEGADA', 'Entrada de consumível/EPI exige LIDER ou ADMIN', 403);
+          }
+          const res = await registrarEntradaEstoque(ctx, {
+            depositoId: body.depositoId,
+            operationId: op.operationId,
+            tipo: p.data.tipo,
+            codigo: p.data.codigo,
+            descricao: p.data.descricao,
+            unidade: p.data.unidade,
+            estoqueMinimo: p.data.estoqueMinimo,
+            quantidade: p.data.quantidade,
+            observacao: p.data.observacao,
+            origem: 'OFFLINE',
+            dispositivo: deps.dispositivo,
+            dataHora: p.data.dataHora,
+            assinaturaMatricula: p.data.assinaturaMatricula,
+            matriculaConfirmacao: p.data.matriculaConfirmacao,
+          });
+          acks.push({ operationId: op.operationId, status: res.jaProcessada ? 'JA_PROCESSADO' : 'OK' });
           break;
         }
         case 'SUGESTAO_ACEITA':
