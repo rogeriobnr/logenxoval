@@ -8,8 +8,10 @@ interface UserInfo {
   matricula: string;
   nome: string;
   sobrenome: string;
+  email?: string | null;
   perfil: string;
   status: string;
+  temPin: boolean;
   depositoIds?: string[];
 }
 
@@ -24,15 +26,21 @@ export function UsersScreen() {
   const [nome, setNome] = useState('');
   const [sobrenome, setSobrenome] = useState('');
   const [matricula, setMatricula] = useState('');
+  const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
+  const [pin, setPin] = useState('');
   const [perfil, setPerfil] = useState<string>(PERFIL.MECANICO);
-  const [formMsg, setFormMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
+  const [formMsg, setFormMsg] = useState<{ kind: 'error' | 'info' | 'warn'; text: string } | null>(null);
 
   // designação de depósito (admin)
   const [pinDesignacao, setPinDesignacao] = useState('');
   const [matriculaDesignacao, setMatriculaDesignacao] = useState(session?.matricula ?? '');
   const [toggling, setToggling] = useState<string | null>(null);
   const [expandido, setExpandido] = useState<string | null>(null);
+
+  // redefinição de PIN (admin)
+  const [novoPinDe, setNovoPinDe] = useState<Record<string, string>>({});
+  const [resetPinBusy, setResetPinBusy] = useState<string | null>(null);
 
   const matriculaLogada = session?.matricula ?? '';
 
@@ -67,13 +75,17 @@ export function UsersScreen() {
         nome: nome.trim(),
         sobrenome: sobrenome.trim(),
         matricula: matricula.trim(),
+        email: email.trim(),
         senha,
         perfil,
+        pin,
       });
       setNome('');
       setSobrenome('');
       setMatricula('');
+      setEmail('');
       setSenha('');
+      setPin('');
       setFormMsg({ kind: 'info', text: 'Usuário criado com sucesso.' });
       await carregar();
     } catch (err) {
@@ -96,6 +108,28 @@ export function UsersScreen() {
         text: err instanceof Error ? err.message : 'Erro ao atualizar usuário.',
       });
     }
+  };
+
+  const redefinirPin = async (user: UserInfo) => {
+    const valor = (novoPinDe[user.id] ?? '').trim();
+    if (!/^\d{4,6}$/.test(valor)) {
+      setFormMsg({ kind: 'warn', text: 'Informe um PIN de 4 a 6 dígitos.' });
+      return;
+    }
+    setResetPinBusy(user.id);
+    setFormMsg(null);
+    try {
+      await api.request<{ ok: boolean }>('PATCH', `/users/${user.id}`, { novoPin: valor });
+      setNovoPinDe((m) => ({ ...m, [user.id]: '' }));
+      setFormMsg({ kind: 'info', text: `PIN de ${user.matricula} redefinido.` });
+      await carregar();
+    } catch (err) {
+      setFormMsg({
+        kind: 'error',
+        text: err instanceof Error ? err.message : 'Erro ao redefinir o PIN.',
+      });
+    }
+    setResetPinBusy(null);
   };
 
   const alternarDeposito = async (user: UserInfo, depositoId: string) => {
@@ -128,12 +162,22 @@ export function UsersScreen() {
     setToggling(null);
   };
 
+  const descricaoStatus = (u: UserInfo) =>
+    u.status === 'ATIVO' ? 'ativo' : u.status === 'PENDENTE' ? 'aguardando aprovação' : 'bloqueado';
+
   return (
     <div>
       <h2 className="screen-title">Usuários</h2>
 
       {loadError && <Alert kind="error">{loadError}</Alert>}
       {formMsg && <Alert kind={formMsg.kind}>{formMsg.text}</Alert>}
+
+      {!isAdmin && (
+        <Alert kind="info">
+          Como Líder você cria usuarios (MECANICO/LIDER) e vê a lista de não-admins. Aprovação de cadastros,
+          bloqueio e designação de depósitos são ações do administrador.
+        </Alert>
+      )}
 
       <div className="card" style={{ marginBottom: '1rem' }}>
         <h3>Novo usuário</h3>
@@ -154,6 +198,14 @@ export function UsersScreen() {
             required
           />
           <Field
+            id="u-email"
+            label="E-mail"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <Field
             id="u-senha"
             label="Senha (mín. 8 caracteres)"
             type="password"
@@ -162,10 +214,19 @@ export function UsersScreen() {
             onChange={(e) => setSenha(e.target.value)}
             required
           />
+          <Field
+            id="u-pin"
+            label="PIN (4 a 6 dígitos)"
+            inputMode="numeric"
+            maxLength={6}
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            required
+          />
           <SelectField id="u-perfil" label="Perfil" value={perfil} onChange={(e) => setPerfil(e.target.value)}>
             <option value={PERFIL.MECANICO}>Mecânico</option>
             <option value={PERFIL.LIDER}>Líder</option>
-            <option value={PERFIL.ADMIN}>Administrador</option>
+            {isAdmin && <option value={PERFIL.ADMIN}>Administrador</option>}
           </SelectField>
           <Btn type="submit" disabled={busy}>
             {busy ? 'Criando…' : 'Criar usuário'}
@@ -179,8 +240,7 @@ export function UsersScreen() {
         {isAdmin && deps.length > 0 && (
           <div style={{ marginBottom: '0.5rem' }}>
             <Alert kind="warn">
-              Para designar depósitos, confirme com sua matrícula {matriculaLogada} e o PIN administrativo (se
-              configurado).
+              Para designar depósitos, confirme com sua matrícula {matriculaLogada} e seu PIN (se definido).
             </Alert>
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               <Field
@@ -191,10 +251,12 @@ export function UsersScreen() {
               />
               <Field
                 id="designa-pin"
-                label="PIN administrativo (opcional)"
+                label="Seu PIN (se definido)"
                 type="password"
+                inputMode="numeric"
                 value={pinDesignacao}
                 onChange={(e) => setPinDesignacao(e.target.value)}
+                placeholder="●●●●"
               />
             </div>
           </div>
@@ -210,8 +272,7 @@ export function UsersScreen() {
                   {u.nome} {u.sobrenome} · {u.matricula}
                 </div>
                 <div className="list-sub">
-                  {u.perfil} ·{' '}
-                  {u.status === 'ATIVO' ? 'ativo' : u.status === 'PENDENTE' ? 'aguardando aprovação' : 'bloqueado'}
+                  {u.perfil} · {descricaoStatus(u)} {u.temPin ? '' : ' · SEM PIN definido'}
                   {(u.depositoIds?.length ?? 0) > 0
                     ? ` · ${u.depositoIds!.length} depósito(s) designado(s)`
                     : ''}
@@ -258,7 +319,7 @@ export function UsersScreen() {
                 )}
               </div>
 
-              {!souEu && (
+              {!souEu && isAdmin && (
                 <div style={{ display: 'flex', gap: '0.4rem', flexDirection: 'column', alignItems: 'flex-end' }}>
                   <Btn
                     variant={u.status === 'ATIVO' ? 'danger' : 'secondary'}
@@ -272,6 +333,25 @@ export function UsersScreen() {
                     <option value={PERFIL.LIDER}>Líder</option>
                     <option value={PERFIL.ADMIN}>Administrador</option>
                   </select>
+                  <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="PIN 4-6"
+                      value={novoPinDe[u.id] ?? ''}
+                      onChange={(e) => setNovoPinDe((m) => ({ ...m, [u.id]: e.target.value.replace(/\D/g, '') }))}
+                      style={{ width: '5.5rem', minHeight: '32px', padding: '0.25rem 0.5rem' }}
+                    />
+                    <Btn
+                      variant="ghost"
+                      className="small"
+                      disabled={resetPinBusy !== null}
+                      onClick={() => void redefinirPin(u)}
+                    >
+                      {resetPinBusy === u.id ? '…' : 'Redefinir PIN'}
+                    </Btn>
+                  </div>
                 </div>
               )}
             </div>

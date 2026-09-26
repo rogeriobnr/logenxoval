@@ -74,8 +74,8 @@ export async function estornarMovimento(
   },
 ) {
   validarMatriculaSeInformada(deps.authUser.matricula, params.matriculaConfirmacao);
-  const { verificarPinSeConfigurado } = await import('../plugins/auth');
-  await verificarPinSeConfigurado(params.pin, deps.app);
+  const { verificarPinDoUsuario } = await import('../plugins/auth');
+  await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
   const nome = await nomeCompletoDe(deps.authUser.sub);
   return aplicarEstorno({
     depositoId: params.depositoId,

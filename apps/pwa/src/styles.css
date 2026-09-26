@@ -237,6 +237,21 @@ textarea {
 }
 
 /* ---------- Formulário ---------- */
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
 .field {
   display: flex;
   flex-direction: column;

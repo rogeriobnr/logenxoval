@@ -42,7 +42,7 @@ describe('cadastro público POST /auth/register', () => {
     await closePool();
   });
 
-  it('registro público sem token cria usuário PENDENTE', async () => {
+  it('registro público sem token cria usuário PENDENTE (com e-mail e PIN)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/auth/register',
@@ -50,14 +50,18 @@ describe('cadastro público POST /auth/register', () => {
         nome: 'Carlos',
         sobrenome: 'Mecanico',
         matricula: 'CD-MEC',
+        email: 'carlos.mecanico@teste.com',
         senha: 'senha-nova-123',
         perfil: 'MECANICO',
+        pin: '2468',
       },
     });
     assert.equal(res.statusCode, 200, res.body);
     const body = res.json();
     assert.equal(body.usuario.status, 'PENDENTE');
     assert.equal(body.usuario.perfil, 'MECANICO');
+    assert.equal(body.usuario.email, 'carlos.mecanico@teste.com');
+    assert.equal(body.usuario.temPin, true);
     novoId = body.usuario.id;
   });
 
@@ -69,8 +73,28 @@ describe('cadastro público POST /auth/register', () => {
         nome: 'Carlos',
         sobrenome: 'Mecanico',
         matricula: 'CD-MEC',
+        email: 'carlos.outroemail@teste.com',
         senha: 'senha-nova-123',
         perfil: 'MECANICO',
+        pin: '1357',
+      },
+    });
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.json().error.code, 'CONFLITO');
+  });
+
+  it('e-mail duplicado com matrícula nova → 409', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        nome: 'Carlos',
+        sobrenome: 'Mecanico',
+        matricula: 'CD-MEC3',
+        email: 'carlos.mecanico@teste.com',
+        senha: 'senha-nova-123',
+        perfil: 'MECANICO',
+        pin: '1357',
       },
     });
     assert.equal(res.statusCode, 409);
@@ -85,8 +109,10 @@ describe('cadastro público POST /auth/register', () => {
         nome: 'X',
         sobrenome: 'Y',
         matricula: 'CD-ADM2',
+        email: 'x.y@teste.com',
         senha: 'senha-nova-123',
         perfil: 'ADMIN',
+        pin: '1234',
       },
     });
     assert.equal(res.statusCode, 400);
@@ -100,8 +126,26 @@ describe('cadastro público POST /auth/register', () => {
         nome: 'X',
         sobrenome: 'Y',
         matricula: 'CD-MEC2',
+        email: 'x.y2@teste.com',
         senha: 'curta',
         perfil: 'LIDER',
+        pin: '1234',
+      },
+    });
+    assert.equal(res.statusCode, 400);
+  });
+
+  it('sem e-mail → 400', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        nome: 'X',
+        sobrenome: 'Y',
+        matricula: 'CD-MEC4',
+        senha: 'senha-nova-123',
+        perfil: 'LIDER',
+        pin: '1234',
       },
     });
     assert.equal(res.statusCode, 400);

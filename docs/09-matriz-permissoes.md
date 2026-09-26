@@ -1,6 +1,6 @@
 # 09 — Matriz de Permissões
 
-Legenda: ✅ permitido | ❌ negado | 🔒 com confirmação de matrícula | 🔑 requer PIN administrativo adicional (settings).
+Legenda: ✅ permitido | ❌ negado | 🔒 com confirmação de matrícula | 🔑 requer o PIN do próprio usuário logado (se ele tiver PIN definido).
 
 Operações do contexto de um depósito: **sempre** o depósito ativo autorizado ao usuário. Usuário nunca opera depósito não autorizado (verificado no servidor via RLS + validação).
 
@@ -30,15 +30,18 @@ Operações do contexto de um depósito: **sempre** o depósito ativo autorizado
 | Editar conferência finalizada (autor) | 🔒 | ✅ | ✅ |
 | Editar conferência finalizada (terceiro) | ❌ | 🔒🔑 | 🔒🔑 |
 | Editar própria conferência | 🔒 | 🔒 | 🔒 |
-| Gerenciar usuários (criar, bloquear, perfil) | ❌ | ❌ | 🔒🔑 |
+| Gerenciar usuários completos (admin) | ❌ | ❌ | 🔒🔑 |
+| Criar usuário MECANICO/LIDER e ver não-admins (líder) | ❌ | ✅ | ✅ |
+| Redefinir PIN de outro usuário | ❌ | ❌ | 🔒🔑 |
+| Designar/revogar depósito a usuário | ❌ | ❌ | 🔒🔑 |
 | Ver logs usando critérios/calendário | ✅ | ✅ | ✅ |
 | Exportar relatórios PDF/PNG/MD/JSON/CSV | ✅ | ✅ | ✅ |
 | Backup de dispositivo | ✅ | ✅ | ✅ |
-| Alterar configurações do app/pin | ❌ | 🔒🔑 | 🔒🔑 |
+| Alterar o próprio PIN | 🔒 (cria/troca o seu) | 🔒 | 🔒 |
 
 Regras de aplicação:
 
 1. **Toda operação crítica** valida matrícula digitada (equivalente a assinatura).
-2. **Admin crítico** exige adicionalmente PIN (hash) quando configurado.
+2. **Operações críticas** exigem adicionalmente o **PIN do próprio usuário logado**, quando ele tiver PIN definido (`users.pin_hash`). Usuário sem PIN definido não precisa informar PIN; o admin pode criar/redefinir o PIN de qualquer usuário (e o próprio usuário, sempre que já tiver PIN, troca pelo dele — ver `Configurações → Meu PIN`).
 3. Permissões conferidas **servidor** em toda rota; tabela local é só espelho para UX offline.
-4. Mecânico não pode estornar, criar depósito, publicar versão, restaurar, aprovar solicitações, ajustar/descartar peça avulsa.
+4. Mecânico não pode estornar, criar depósito, publicar versão, restaurar, aprovar solicitações, ajustar/descartar peça avulsa, nem listar/gerenciar usuários.

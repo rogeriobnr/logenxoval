@@ -24,8 +24,8 @@ export async function criarDeposito(
   if (deps.authUser.matricula !== params.matriculaConfirmacao) {
     throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
   }
-  const { verificarPinSeConfigurado } = await import('../plugins/auth');
-  await verificarPinSeConfigurado(params.pin, deps.app);
+  const { verificarPinDoUsuario } = await import('../plugins/auth');
+  await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
 
   const dep = await createDeposit({
     numero: params.numero,
@@ -61,8 +61,8 @@ export async function editarDeposito(
   if (deps.authUser.matricula !== params.matriculaConfirmacao) {
     throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
   }
-  const { verificarPinSeConfigurado } = await import('../plugins/auth');
-  await verificarPinSeConfigurado(params.pin, deps.app);
+  const { verificarPinDoUsuario } = await import('../plugins/auth');
+  await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
 
   const anterior = await findDepositById(params.depositoId);
   if (!anterior) throw new AppError('NAO_ENCONTRADO', 'Depósito não encontrado', 404);
@@ -95,8 +95,8 @@ export async function desativarDeposito(
   if (deps.authUser.matricula !== params.matriculaConfirmacao) {
     throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
   }
-  const { verificarPinSeConfigurado } = await import('../plugins/auth');
-  await verificarPinSeConfigurado(params.pin, deps.app);
+  const { verificarPinDoUsuario } = await import('../plugins/auth');
+  await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
 
   const anterior = await findDepositById(params.depositoId);
   if (!anterior) throw new AppError('NAO_ENCONTRADO', 'Depósito não encontrado', 404);

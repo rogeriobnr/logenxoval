@@ -16,8 +16,10 @@ export interface UserRow {
   matricula: string;
   nome: string;
   sobrenome: string;
+  email?: string | null;
   perfil: Perfil;
   status: UserStatus;
+  temPin: boolean;
   criadoEm: ISO;
   atualizadoEm: ISO;
 }

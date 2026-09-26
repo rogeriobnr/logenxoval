@@ -6,9 +6,13 @@ import { newId, newToken } from '../lib/crypto';
 import {
   createUser,
   findById,
+  findByEmail,
   findByMatricula,
+  getPinHashById,
   listUsers,
   revokeSessionsByUser,
+  updatePin,
+  updateSenha,
   updateUserStatus,
 } from '../repos/usersRepo';
 import {
@@ -179,17 +183,22 @@ export async function publicoRegistrarUsuario(opts: {
   nome: string;
   sobrenome: string;
   matricula: string;
+  email: string;
   senha: string;
   perfil: Perfil;
+  pin: string;
   dispositivo?: string;
 }): Promise<ReturnType<typeof createUser>> {
   const senhaHash = await bcrypt.hash(opts.senha, 12);
+  const pinHash = await bcrypt.hash(opts.pin, 10);
   const user = await createUser({
     matricula: opts.matricula,
     nome: opts.nome,
     sobrenome: opts.sobrenome,
+    email: opts.email,
     perfil: opts.perfil,
     senhaHash,
+    pinHash,
     status: 'PENDENTE',
   });
   await insertAuditLog({
@@ -209,17 +218,22 @@ export async function adminCreateUser(opts: {
   nome: string;
   sobrenome: string;
   matricula: string;
+  email: string;
   senha: string;
   perfil: Perfil;
+  pin: string;
   log: { usuarioId: string; matricula: string; dispositivo: string };
 }): Promise<ReturnType<typeof createUser>> {
   const senhaHash = await bcrypt.hash(opts.senha, 12);
+  const pinHash = await bcrypt.hash(opts.pin, 10);
   const user = await createUser({
     matricula: opts.matricula,
     nome: opts.nome,
     sobrenome: opts.sobrenome,
+    email: opts.email,
     perfil: opts.perfil,
     senhaHash,
+    pinHash,
   });
   await insertAuditLog({
     tipo: 'CRIACAO_USUARIO',
@@ -267,13 +281,75 @@ export async function adminListUsers(): Promise<ReturnType<typeof listUsers>> {
 
 type UserRowBase = Awaited<ReturnType<typeof listUsers>>[number];
 
-export async function adminListUsersComDepositos(): Promise<
-  Array<UserRowBase & { depositoIds: string[] }>
-> {
+export async function adminListUsersComDepositos(opts?: {
+  omitirAdmin?: boolean;
+}): Promise<Array<UserRowBase & { depositoIds: string[] }>> {
   const users = await listUsers();
   const grants = await listUserDepositGrants();
   const porUsuario = new Map(grants.map((g) => [g.userId, g.depositoIds]));
-  return users.map((u) => ({ ...u, depositoIds: porUsuario.get(u.id) ?? [] }));
+  const filtrados = opts?.omitirAdmin ? users.filter((u) => u.perfil !== 'ADMIN') : users;
+  return filtrados.map((u) => ({ ...u, depositoIds: porUsuario.get(u.id) ?? [] }));
+}
+
+export async function adminRedefinirPin(opts: {
+  id: string;
+  novoPin: string;
+  log: { usuarioId: string; matricula: string; dispositivo: string };
+}): Promise<void> {
+  const alvo = await findById(opts.id);
+  if (!alvo) throw new AppError('NAO_ENCONTRADO', 'Usuário não encontrado', 404);
+  await updatePin(opts.id, await bcrypt.hash(opts.novoPin, 10));
+  await insertAuditLog({
+    tipo: 'EDICAO_USUARIO',
+    usuarioId: opts.log.usuarioId,
+    matricula: opts.log.matricula,
+    entidade: 'users',
+    operacaoId: opts.id,
+    estadoPosterior: { matricula: alvo.matricula, pinRedefinido: true },
+    origem: 'ONLINE',
+    dispositivo: opts.log.dispositivo,
+  });
+}
+
+export async function alterarPinDoUsuario(opts: {
+  userId: string;
+  pinAtual: string;
+  novoPin: string;
+  dispositivo: string;
+}): Promise<void> {
+  const atual = await getPinHashById(opts.userId);
+  if (!atual) {
+    // Usuário sem PIN definido pode criar o próprio PIN deixando o PIN atual vazio.
+    if (opts.pinAtual !== '') {
+      throw new AppError('PERMISSAO_NEGADA', 'PIN atual incorreto', 403);
+    }
+    await updatePin(opts.userId, await bcrypt.hash(opts.novoPin, 10));
+    await insertAuditLog({
+      tipo: 'EDICAO_USUARIO',
+      usuarioId: opts.userId,
+      matricula: (await findById(opts.userId))?.matricula ?? '',
+      entidade: 'users',
+      operacaoId: opts.userId,
+      estadoPosterior: { pinCriado: true },
+      origem: 'ONLINE',
+      dispositivo: opts.dispositivo,
+    });
+    return;
+  }
+  if (!(await bcrypt.compare(opts.pinAtual, atual))) {
+    throw new AppError('PERMISSAO_NEGADA', 'PIN atual incorreto', 403);
+  }
+  await updatePin(opts.userId, await bcrypt.hash(opts.novoPin, 10));
+  await insertAuditLog({
+    tipo: 'EDICAO_USUARIO',
+    usuarioId: opts.userId,
+    matricula: (await findById(opts.userId))?.matricula ?? '',
+    entidade: 'users',
+    operacaoId: opts.userId,
+    estadoPosterior: { pinAlterado: true },
+    origem: 'ONLINE',
+    dispositivo: opts.dispositivo,
+  });
 }
 
 type LogContext = { usuarioId: string; matricula: string; dispositivo: string };
@@ -294,8 +370,8 @@ export async function adminDesignarDeposito(opts: {
   if (opts.matriculaConfirmacao !== opts.log.matricula) {
     throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
   }
-  const { verificarPinSeConfigurado } = await import('../plugins/auth');
-  await verificarPinSeConfigurado(opts.pin, opts.app);
+  const { verificarPinDoUsuario } = await import('../plugins/auth');
+  await verificarPinDoUsuario(opts.pin, opts.app, opts.log.usuarioId);
 
   const alvo = requireNonNull(await findById(opts.alvoId));
   const dep = requireNonNull(await findDepositById(opts.depositoId));
@@ -330,8 +406,8 @@ export async function adminRevogarDeposito(opts: {
   if (opts.matriculaConfirmacao !== opts.log.matricula) {
     throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
   }
-  const { verificarPinSeConfigurado } = await import('../plugins/auth');
-  await verificarPinSeConfigurado(opts.pin, opts.app);
+  const { verificarPinDoUsuario } = await import('../plugins/auth');
+  await verificarPinDoUsuario(opts.pin, opts.app, opts.log.usuarioId);
 
   const alvo = requireNonNull(await findById(opts.alvoId));
   const dep = requireNonNull(await findDepositById(opts.depositoId));

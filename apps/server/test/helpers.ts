@@ -11,6 +11,7 @@ export async function ensureMigrated(): Promise<void> {
 }
 
 const TABELAS = [
+  'password_resets',
   'processed_operations',
   'audit_logs',
   'snapshots',

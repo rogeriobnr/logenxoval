@@ -27,11 +27,19 @@ A função recebe a URL original; o adaptador normaliza `req.url` (remove prefix
 | `SEED_ADMIN_SENHA` | senha do primeiro admin | build |
 | `SEED_ADMIN_NOME` / `SEED_ADMIN_SOBRENOME` | opcionais | build |
 | `GEMINI_API_KEY` | chave da API Google Gemini (gerada em aistudio.google.com/apikey) — **opcional** | função |
+| `EMAIL_HOST` / `EMAIL_PORT` | SMTP (ex.: AWS SES ou qualquer gateway) — **opcional** | função |
+| `EMAIL_USER` / `EMAIL_PASS` | credenciais SMTP — **opcional** | função |
+| `EMAIL_FROM` | remetente exibido no e-mail de recuperação — **opcional** | função |
+| `APP_URL` | base pública (ex.: `https://logenxoval.vercel.app`) usada no link de recuperação — **opcional** | função |
 
 `vercel env add NOME VALOR production` para cada uma.
 
 Sem `GEMINI_API_KEY`, a rota `POST /ocr/ai` responde `501 IA_NAO_CONFIGURADA` e o PWA cai
 automaticamente para o reconhecimento local (Tesseract.js), com aviso no app.
+
+Sem `EMAIL_*` (SMTP não configurado), `POST /auth/forgot-password` continua respondendo 200 e o
+link de recuperação vai para o **log da função** (útil em dev); em produção, configurar `EMAIL_*`
+para entrega real ao e-mail do usuário.
 
 ## 17.3 Fluxo do deploy (CLI)
 

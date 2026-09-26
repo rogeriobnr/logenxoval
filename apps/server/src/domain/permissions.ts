@@ -16,6 +16,7 @@ export type Acao =
   | 'DESCARTE'
   | 'APROVAR_SOLICITACAO'
   | 'GERENCIAR_USUARIOS'
+  | 'CRIAR_USUARIOS'
   | 'CONFIGURACOES'
   | 'CONVERTER_SUGESTAO';
 
@@ -63,6 +64,7 @@ const PERMISSOES: Record<Perfil, Record<Acao, boolean>> = {
     DESCARTE: false,
     APROVAR_SOLICITACAO: false,
     GERENCIAR_USUARIOS: false,
+    CRIAR_USUARIOS: false,
     CONFIGURACOES: false,
     CONVERTER_SUGESTAO: false,
   },
@@ -82,6 +84,7 @@ const PERMISSOES: Record<Perfil, Record<Acao, boolean>> = {
     DESCARTE: true,
     APROVAR_SOLICITACAO: true,
     GERENCIAR_USUARIOS: false,
+    CRIAR_USUARIOS: true,
     CONFIGURACOES: true,
     CONVERTER_SUGESTAO: true,
   },
@@ -101,6 +104,7 @@ const PERMISSOES: Record<Perfil, Record<Acao, boolean>> = {
     DESCARTE: true,
     APROVAR_SOLICITACAO: true,
     GERENCIAR_USUARIOS: true,
+    CRIAR_USUARIOS: true,
     CONFIGURACOES: true,
     CONVERTER_SUGESTAO: true,
   },

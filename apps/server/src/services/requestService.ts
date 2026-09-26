@@ -7,7 +7,7 @@ import {
   obterSolicitacao,
   transicionarSolicitacao,
 } from '../repos/requestRepo';
-import { verificarPinSeConfigurado } from '../plugins/auth';
+import { verificarPinDoUsuario } from '../plugins/auth';
 
 export interface RequestServiceDeps {
   app: FastifyInstance;
@@ -98,7 +98,7 @@ export async function transicionarSolicitacaoService(
     if (!podeExecutar(deps.authUser.perfil, regras.acao)) {
       throw new AppError('PERMISSAO_NEGADA', 'Aprovar/atender solicitação exige LIDER/ADMIN', 403);
     }
-    if (regras.precisaPin) await verificarPinSeConfigurado(params.pin, deps.app);
+    if (regras.precisaPin) await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
   }
 
   const solicitacao = await obterSolicitacao(params.depositoId, deps.authUser.perfil, params.requestId);

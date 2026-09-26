@@ -3,7 +3,7 @@ import type { OrigemSparePart, Perfil, TipoMovimentacaoSparePart } from '@logenx
 import { podeExecutar } from '../domain/permissions';
 import { AppError } from '../lib/errors';
 import { criarPecaAvulsa, movimentarPeca } from '../repos/spareRepo';
-import { verificarPinSeConfigurado } from '../plugins/auth';
+import { verificarPinDoUsuario } from '../plugins/auth';
 
 export interface PecaServiceDeps {
   app: FastifyInstance;
@@ -91,7 +91,7 @@ export async function movimentarPecaAvulsa(
     throw new AppError('PERMISSAO_NEGADA', 'Descarte exige LIDER/ADMIN', 403);
   }
   if (params.tipo === 'AJUSTE_AUTORIZADO' || params.tipo === 'DESCARTE') {
-    await verificarPinSeConfigurado(params.pin, deps.app);
+    await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
   }
   return movimentarPeca({
     depositoId: params.depositoId,

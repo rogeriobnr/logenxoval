@@ -105,15 +105,20 @@ export function confirmarMatricula(matricula: string) {
   };
 }
 
-export async function verificarPinSeConfigurado(
+/**
+ * Valida o PIN DO PRÓPRIO usuário logado (fase 14). Usuário sem PIN definido
+ * não exige PIN — quem define o PIN (cadastro, admin) passa a precisar dele.
+ */
+export async function verificarPinDoUsuario(
   pin: string | undefined,
-  app: FastifyInstance,
+  _app: FastifyInstance,
+  usuarioId: string,
 ): Promise<void> {
-  const { getPinHash } = await import('../repos/settingsRepo');
-  const pinHash = await getPinHash();
-  if (!pinHash) return; // PIN não configurado → não exigir
-  if (!pin) throw new AppError('PERMISSAO_NEGADA', 'PIN administrativo obrigatório', 403);
+  const { getPinHashById } = await import('../repos/usersRepo');
+  const pinHash = await getPinHashById(usuarioId);
+  if (!pinHash) return; // usuário sem PIN → não exigir
+  if (!pin) throw new AppError('PERMISSAO_NEGADA', 'PIN obrigatório', 403);
   const bcrypt = (await import('bcryptjs')).default;
   const ok = await bcrypt.compare(pin, pinHash);
-  if (!ok) throw new AppError('PERMISSAO_NEGADA', 'PIN administrativo inválido', 403);
+  if (!ok) throw new AppError('PERMISSAO_NEGADA', 'PIN inválido', 403);
 }

@@ -46,6 +46,10 @@
 | 33 | Fila de operações pendentes (ordem, retry) | PWA |
 | 34 | Erro de servidor (backoff, não perde fila) | integration |
 | 35 | Conflito entre dispositivos (A e B baixam ao mesmo item) | integration |
+| 36 | Cadastro público → PENDENTE → aprovação → login (e-mail + PIN) | integration |
+| 37 | Líder cria MECANICO/LIDER e lista sem admins; criar ADMIN → 403 | integration |
+| 38 | Recuperação de senha (forgot/reset, token único 30 min, revoga sessões) | integration |
+| 39 | PIN por usuário (criar/trocar; exigido nas ações críticas; admin redefine) | integration |
 
 ## 13.3 Ambiente
 

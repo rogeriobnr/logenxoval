@@ -32,8 +32,8 @@ export async function restaurarSnapshot(
   if (deps.authUser.matricula !== params.matriculaConfirmacao) {
     throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
   }
-  const { verificarPinSeConfigurado } = await import('../plugins/auth');
-  await verificarPinSeConfigurado(params.pin, deps.app);
+  const { verificarPinDoUsuario } = await import('../plugins/auth');
+  await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
 
   const dep = await findDepositById(params.depositoId);
   if (!dep) throw new AppError('NAO_ENCONTRADO', 'Depósito não encontrado', 404);

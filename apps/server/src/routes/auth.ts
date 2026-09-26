@@ -1,10 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
-import { loginBodySchema, logoutBodySchema, refreshBodySchema, changePasswordBodySchema, registerUserBodySchema } from '@logenxoval/contracts';
+import {
+  loginBodySchema, logoutBodySchema, refreshBodySchema, changePasswordBodySchema, registerUserBodySchema,
+  forgotPasswordBodySchema, resetPasswordBodySchema, changePinBodySchema,
+} from '@logenxoval/contracts';
 import { authenticate } from '../plugins/auth';
 import { validateBody } from '../lib/validator';
 import { AppError } from '../lib/errors';
 import * as authService from '../services/authService';
+import * as recoveryService from '../services/recoveryService';
 import { listDepositsByUser } from '../repos/depositsRepo';
 import { findById } from '../repos/usersRepo';
 
@@ -38,8 +42,10 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
         nome: body.nome,
         sobrenome: body.sobrenome,
         matricula: body.matricula,
+        email: body.email.toLowerCase(),
         senha: body.senha,
         perfil: body.perfil,
+        pin: body.pin,
         dispositivo: (req.headers['x-device-id'] as string) ?? undefined,
       });
       return {
@@ -48,11 +54,48 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
           matricula: user.matricula,
           nome: user.nome,
           sobrenome: user.sobrenome,
+          email: user.email ?? undefined,
           perfil: user.perfil,
           status: user.status,
+          temPin: user.temPin,
         },
         mensagem: 'Cadastro recebido. Um administrador precisa aprovar antes do primeiro login.',
       };
+    },
+  );
+
+  app.post(
+    '/auth/forgot-password',
+    { ...validateBody(forgotPasswordBodySchema) },
+    async (req) => {
+      const body = req.body as typeof forgotPasswordBodySchema._type;
+      await recoveryService.solicitarRecuperacao(body.email);
+      return { ok: true, mensagem: 'Se o e-mail estiver cadastrado, enviamos o link de recuperação.' };
+    },
+  );
+
+  app.post(
+    '/auth/reset-password',
+    { ...validateBody(resetPasswordBodySchema) },
+    async (req) => {
+      const body = req.body as typeof resetPasswordBodySchema._type;
+      await recoveryService.redefinirSenhaComToken(body.token, body.novaSenha);
+      return { ok: true, mensagem: 'Senha redefinida. Faça login com a nova senha.' };
+    },
+  );
+
+  app.post(
+    '/auth/change-pin',
+    { preHandler: authenticate, ...validateBody(changePinBodySchema) },
+    async (req) => {
+      const body = req.body as typeof changePinBodySchema._type;
+      await authService.alterarPinDoUsuario({
+        userId: req.authUser!.sub,
+        pinAtual: body.pinAtual,
+        novoPin: body.novoPin,
+        dispositivo: (req.headers['x-device-id'] as string) ?? 'api',
+      });
+      return { ok: true };
     },
   );
 

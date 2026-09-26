@@ -6,7 +6,6 @@ import { buildApp } from '../src/app';
 import { ensureMigrated, resetDb } from './helpers';
 import { closePool, getPool } from '../src/db/pool';
 import { createUser } from '../src/repos/usersRepo';
-import { setPin } from '../src/repos/settingsRepo';
 
 const DEV_ADMIN = 'dev-design-admin-01';
 const DEV_MEC = 'dev-design-mec-001';
@@ -30,6 +29,7 @@ async function login(app: FastifyInstance, matricula: string, device: string) {
 describe('designação de usuário a depósito (admin)', () => {
   let app: FastifyInstance;
   let adminToken: string;
+  let admPinToken: string;
   let liderToken: string;
   let mecToken: string;
   let mecId: string;
@@ -48,6 +48,16 @@ describe('designação de usuário a depósito (admin)', () => {
       senhaHash: await bcrypt.hash('senha-teste-123', 4),
     });
     void admin;
+    const admPin = await createUser({
+      matricula: 'ADM-PIN',
+      nome: 'Pin',
+      sobrenome: 'Admin',
+      perfil: 'ADMIN',
+      senhaHash: await bcrypt.hash('senha-teste-123', 4),
+      email: 'pin.admin@teste.com',
+      pinHash: await bcrypt.hash('4321', 4),
+    });
+    void admPin;
     const lider = await createUser({
       matricula: 'LDR-DESIG',
       nome: 'Leo',
@@ -66,6 +76,7 @@ describe('designação de usuário a depósito (admin)', () => {
     mecId = mec.id;
 
     adminToken = (await login(app, 'ADM-DESIG', DEV_ADMIN)).accessToken;
+    admPinToken = (await login(app, 'ADM-PIN', 'dev-adm-pin')).accessToken;
     liderToken = (await login(app, 'LDR-DESIG', DEV_LIDER)).accessToken;
     mecToken = (await login(app, 'MEC-DESIG', DEV_MEC)).accessToken;
 
@@ -172,29 +183,28 @@ describe('designação de usuário a depósito (admin)', () => {
     assert.equal(rows.length, 1);
   });
 
-  it('com PIN configurado, designar sem PIN → 403; com PIN → 200', async () => {
-    await setPin('4321');
+  it('com PIN do admin configurado, designar sem PIN → 403; com PIN → 200', async () => {
     const semPin = await app.inject({
       method: 'POST',
       url: `/users/${mecId}/deposits`,
-      headers: auth(adminToken, DEV_ADMIN),
-      payload: { depositoId: depId, matriculaConfirmacao: 'ADM-DESIG' },
+      headers: auth(admPinToken, 'dev-adm-pin'),
+      payload: { depositoId: depId, matriculaConfirmacao: 'ADM-PIN' },
     });
     assert.equal(semPin.statusCode, 403);
 
     const pinErrado = await app.inject({
       method: 'POST',
       url: `/users/${mecId}/deposits`,
-      headers: auth(adminToken, DEV_ADMIN),
-      payload: { depositoId: depId, matriculaConfirmacao: 'ADM-DESIG', pin: '0000' },
+      headers: auth(admPinToken, 'dev-adm-pin'),
+      payload: { depositoId: depId, matriculaConfirmacao: 'ADM-PIN', pin: '0000' },
     });
     assert.equal(pinErrado.statusCode, 403);
 
     const comPin = await app.inject({
       method: 'POST',
       url: `/users/${mecId}/deposits`,
-      headers: auth(adminToken, DEV_ADMIN),
-      payload: { depositoId: depId, matriculaConfirmacao: 'ADM-DESIG', pin: '4321' },
+      headers: auth(admPinToken, 'dev-adm-pin'),
+      payload: { depositoId: depId, matriculaConfirmacao: 'ADM-PIN', pin: '4321' },
     });
     assert.equal(comPin.statusCode, 200, comPin.body);
 

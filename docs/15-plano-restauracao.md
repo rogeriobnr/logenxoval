@@ -19,7 +19,7 @@ Geração automática ANTES e/ou DEPOIS de:
 
 - **Nunca apaga** logs do Goldbox, correções, versões, conferências já registradas.
 - Restauração **cria nova versão** (não sobrescreve a atual) e preserva a atual.
-- Requisitos: motivo + matrícula (e PIN para admin).
+- Requisitos: motivo + matrícula (e PIN do próprio usuário logado, se definido).
 
 ## 15.3 Fluxo da ação Restaurar
 

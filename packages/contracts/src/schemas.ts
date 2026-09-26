@@ -19,6 +19,9 @@ export const depositoIdSchema = z.string().min(1).max(64);
 export const matriculaSchema = z.string().min(3).max(40);
 export const codigoSapSchema = z.string().trim().min(1).max(40);
 export const quantidadeSchema = z.number().int().positive();
+/** PIN de usuário: 4 a 6 dígitos. */
+export const pinSchema = z.string().regex(/^\d{4,6}$/);
+export const emailSchema = z.string().trim().email().max(254);
 
 // ---------------------------------------------------------------------------
 // Auth
@@ -43,6 +46,20 @@ export const changePasswordBodySchema = z.object({
   novaSenha: z.string().min(8),
 });
 
+export const changePinBodySchema = z.object({
+  pinAtual: z.union([pinSchema, z.literal('')]),
+  novoPin: pinSchema,
+});
+
+export const forgotPasswordBodySchema = z.object({
+  email: emailSchema,
+});
+
+export const resetPasswordBodySchema = z.object({
+  token: z.string().min(20).max(512),
+  novaSenha: z.string().min(8),
+});
+
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------
@@ -50,13 +67,16 @@ export const createUserBodySchema = z.object({
   nome: z.string().trim().min(2),
   sobrenome: z.string().trim().min(2),
   matricula: matriculaSchema,
+  email: emailSchema,
   senha: z.string().min(8),
   perfil: z.enum([PERFIL.MECANICO, PERFIL.LIDER, PERFIL.ADMIN]),
+  pin: pinSchema,
 });
 
 export const updateUserBodySchema = z.object({
   status: z.enum([USER_STATUS.ATIVO, USER_STATUS.BLOQUEADO]).optional(),
   perfil: z.enum([PERFIL.MECANICO, PERFIL.LIDER, PERFIL.ADMIN]).optional(),
+  novoPin: pinSchema.optional(),
 });
 
 /** Cadastro público (auto-atendimento): nasce PENDENTE até aprovação do admin. */
@@ -64,8 +84,10 @@ export const registerUserBodySchema = z.object({
   nome: z.string().trim().min(2),
   sobrenome: z.string().trim().min(2),
   matricula: matriculaSchema,
+  email: emailSchema,
   senha: z.string().min(8),
   perfil: z.enum([PERFIL.MECANICO, PERFIL.LIDER]),
+  pin: pinSchema,
 });
 
 export const grantUserDepositBodySchema = z.object({

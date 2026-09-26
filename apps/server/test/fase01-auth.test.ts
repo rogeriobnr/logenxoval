@@ -242,22 +242,63 @@ describe('fase01 - autenticação, usuários e depósitos', () => {
       assert.equal(rAd.statusCode, 200);
     });
 
-    it('somente admin cria usuário', async () => {
+    it('líder lista usuários sem os admins', async () => {
+      const rLider = await app.inject({ method: 'GET', url: '/users', headers: auth(liderToken, DEV_LIDER) });
+      assert.equal(rLider.statusCode, 200);
+      const perfis = new Set(
+        (rLider.json().usuarios as Array<{ perfil: string }>).map((u) => u.perfil),
+      );
+      assert.ok(!perfis.has('ADMIN'), 'líder não deve ver administradores');
+    });
+
+    it('líder cria usuário MECANICO (200); lider cria ADMIN → 403; admin cria (200)', async () => {
       const rLider = await app.inject({
         method: 'POST',
         url: '/users',
         headers: auth(liderToken, DEV_LIDER),
-        payload: { nome: 'Leozinho', sobrenome: 'Dois', matricula: 'LDR-002', senha: 'senha-teste-123', perfil: 'MECANICO' },
+        payload: {
+          nome: 'Leozinho',
+          sobrenome: 'Dois',
+          matricula: 'LDR-002',
+          email: 'leozinho@teste.com',
+          senha: 'senha-teste-123',
+          perfil: 'MECANICO',
+          pin: '1111',
+        },
       });
-      assert.equal(rLider.statusCode, 403);
+      assert.equal(rLider.statusCode, 200, rLider.body);
+
+      const rLiderAdm = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: auth(liderToken, DEV_LIDER),
+        payload: {
+          nome: 'Leozinho',
+          sobrenome: 'Tres',
+          matricula: 'LDR-003',
+          email: 'leozinho3@teste.com',
+          senha: 'senha-teste-123',
+          perfil: 'ADMIN',
+          pin: '1111',
+        },
+      });
+      assert.equal(rLiderAdm.statusCode, 403);
 
       const rAdm = await app.inject({
         method: 'POST',
         url: '/users',
         headers: auth(adminToken, DEV_ADMIN),
-        payload: { nome: 'Xuxa', sobrenome: 'Dois', matricula: 'MEC-002', senha: 'senha-teste-123', perfil: 'MECANICO' },
+        payload: {
+          nome: 'Xuxa',
+          sobrenome: 'Dois',
+          matricula: 'MEC-002',
+          email: 'xuxa@teste.com',
+          senha: 'senha-teste-123',
+          perfil: 'MECANICO',
+          pin: '2222',
+        },
       });
-      assert.equal(rAdm.statusCode, 200);
+      assert.equal(rAdm.statusCode, 200, rAdm.body);
     });
 
     it('admin bloqueia usuário → login passa a falhar e sessões são revogadas', async () => {

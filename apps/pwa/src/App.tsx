@@ -4,6 +4,7 @@ import { useHashRoute, navigate } from './router';
 import { espelharDepositos } from './services/sync';
 import { Header } from './components/Header';
 import { LoginScreen } from './screens/LoginScreen';
+import { ResetPasswordScreen } from './screens/ResetPasswordScreen';
 import { DashboardScreen } from './screens/DashboardScreen';
 import { UsersScreen } from './screens/UsersScreen';
 import { DepositsScreen } from './screens/DepositsScreen';
@@ -84,7 +85,11 @@ export function App() {
     );
   }
 
-  if (status === 'anon') return <LoginScreen />;
+  if (status === 'anon') {
+    const resetToken = new URLSearchParams(window.location.search).get('recuperar');
+    if (resetToken) return <ResetPasswordScreen token={resetToken} />;
+    return <LoginScreen />;
+  }
 
   const isAdmin = session && session.perfil !== 'MECANICO';
 

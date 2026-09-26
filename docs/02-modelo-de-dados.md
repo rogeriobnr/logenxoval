@@ -36,10 +36,18 @@ Status genéricos: `ATIVO | INATIVO | BLOQUEADO`, `ABERTA | CONCLUIDA | CANCELAD
 
 ### users
 ```
-id, matricula UNIQUE, nome, sobrenome, perfil (MECANICO|LIDER|ADMIN),
-senhaHash (servidor: bcrypt), senhaLocal (device: PBKDF2, apenas para auth offline),
-status (ATIVO|BLOQUEADO), criadoEm, atualizadoEm
+id, matricula UNIQUE, email UNIQUE (optional; usado só na recuperação), nome, sobrenome,
+perfil (MECANICO|LIDER|ADMIN), senhaHash (servidor: bcrypt),
+pinHash (PIN do próprio usuário, 4-6 dígitos), status (ATIVO|BLOQUEADO|PENDENTE),
+criadoEm, atualizadoEm
 ```
+Cadastro público cria `PENDENTE` até aprovação do admin. Não há mais PIN global em `settings` (removido; `settings` segue para outras chaves).
+
+### password_resets
+```
+id, userId (ref users), tokenHash (sha256 do token), expiraEm, criadoEm, usadoEm
+```
+Token de uso único para recuperação de senha (validade 30 min).
 
 ### sessions
 ```

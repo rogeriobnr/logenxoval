@@ -11,18 +11,22 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 | Método | Rota | Descrição |
 | ------ | ---- | --------- |
 | POST | `/auth/login` | `{matricula, senha, deviceId}` → `{accessToken, refreshToken, user, saltLocal}` |
+| POST | `/auth/register` | sem token — cadastro público `{nome, sobrenome, matricula, email, senha, perfil (MECANICO/LIDER), pin}` → usuário `PENDENTE` |
+| POST | `/auth/forgot-password` | público — `{email}` → sempre 200; se o e-mail existe, envia link de recuperação |
+| POST | `/auth/reset-password` | público — `{token, novaSenha}` (token 1 uso, expira 30 min) |
+| POST | `/auth/change-pin` | `{pinAtual, novoPin}` — PIN do próprio usuário (`pinAtual` vazio permite criar o primeiro PIN) |
 | POST | `/auth/logout` | encerra sessão do device |
 | POST | `/auth/refresh` | `{refreshToken, deviceId}` → novo token |
 | GET | `/auth/me` | usuário atual + depósitos autorizados + perfil |
 | POST | `/auth/change-password` | troca senha (admin próprio) |
 
-### Users (admin)
+### Users (admin; líder com acesso parcial)
 | Método | Rota | Descrição |
 | ------ | ---- | --------- |
-| GET | `/users` | listar |
-| POST | `/users` | criar (nome, sobrenome, matrícula, senha, perfil) |
-| PATCH | `/users/:id` | status/bloqueio/perfil |
-| DELETE | `/users/:id` | desativar (lógico) |
+| GET | `/users` | listar — admin vê todos; líder vê somente não-admins (MECANICO/LIDER) |
+| POST | `/users` | criar `{nome, sobrenome, matricula, email, senha, perfil, pin}` — líder cria MECANICO/LIDER; criar ADMIN é restrito ao admin (403) |
+| PATCH | `/users/:id` | status/bloqueio/perfil (admin); `{novoPin}` redefine o PIN (admin) |
+| DELETE | `/users/:id` | desativar (lógico) — admin |
 
 ### Depósitos
 | Método | Rota | Descrição |

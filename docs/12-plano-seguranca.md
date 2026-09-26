@@ -16,7 +16,7 @@
 - `depositoId` validado contra os depósitos do usuário em **todas** as requisições.
 - RLS no PostgreSQL: políticas por `depositoId` e autorização denegada por padrão.
 - Operações críticas validam `matricula` no corpo (assinatura) — servidor confere que é o usuário logado e ativo.
-- PIN administrativo (hash) para ações críticas de admin/líder quando configurado.
+- PIN por usuário (hash `users.pin_hash`) para ações também exige PIN do próprio logado (ver em 09). Não há PIN global.
 - Usuário bloqueado ⇒ revoga tokens + na sync o app local é bloqueado.
 
 ## 12.3 Transporte
@@ -26,7 +26,8 @@
 
 ## 12.4 Dados
 
-- Chat: segredos via variável de ambiente (`DATABASE_URL`, `JWT_SECRET`, `ADMIN_PIN`). Nunca no repositório.
+- Chat: segredos via variável de ambiente (`DATABASE_URL`, `JWT_SECRET`, `GEMINI_API_KEY`, `EMAIL_HOST`/`EMAIL_USER`/`EMAIL_PASS`/`EMAIL_FROM`, `APP_URL`). Nunca no repositório.
+- Recuperação de senha: token aleatório sha256 em `password_resets` (1 uso, 30 min); resposta da rota sempre 200 para não revelar contas; sessões revogadas na troca de senha.
 - `.env*` no .gitignore; `.env.example` documentado.
 - Dados sensíveis AES-GCM quando aplicável (ex.: senha não é armazenada, então hash é suficiente; observações/motivos sensíveis podem ser criptografados).
 - Criptografia no repouso do banco (responsabilidade do provedor, documentado).

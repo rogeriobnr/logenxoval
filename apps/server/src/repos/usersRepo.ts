@@ -7,8 +7,10 @@ export async function createUser(params: {
   matricula: string;
   nome: string;
   sobrenome: string;
+  email?: string;
   perfil: Perfil;
   senhaHash: string;
+  pinHash?: string;
   status?: UserStatus;
 }): Promise<UserRow> {
   const pool = getPool();
@@ -17,16 +19,22 @@ export async function createUser(params: {
   const status = params.status ?? 'ATIVO';
   try {
     const { rows } = await pool.query(
-      `INSERT INTO users (id, matricula, nome, sobrenome, perfil, senha_hash, status, criado_em, atualizado_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `INSERT INTO users (id, matricula, nome, sobrenome, email, perfil, senha_hash, pin_hash, status, criado_em, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
-      [id, params.matricula, params.nome, params.sobrenome, params.perfil, params.senhaHash, status, now, now],
+      [
+        id, params.matricula, params.nome, params.sobrenome, params.email ?? null, params.perfil,
+        params.senhaHash, params.pinHash ?? null, status, now, now,
+      ],
     );
     return mapUser(rows[0]);
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes('duplicate key') && msg.includes('matricula')) {
       throw new AppError('CONFLITO', 'Matrícula já cadastrada', 409);
+    }
+    if (msg.includes('duplicate key') && msg.includes('email')) {
+      throw new AppError('CONFLITO', 'E-mail já cadastrado', 409);
     }
     throw err;
   }
@@ -38,10 +46,34 @@ export async function findByMatricula(matricula: string): Promise<(UserRow & { s
   return rows[0] ? { ...mapUser(rows[0]), senhaHash: rows[0].senha_hash } : null;
 }
 
+export async function findByEmail(email: string): Promise<(UserRow & { senhaHash: string }) | null> {
+  const pool = getPool();
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+  return rows[0] ? { ...mapUser(rows[0]), senhaHash: rows[0].senha_hash } : null;
+}
+
 export async function findById(id: string): Promise<UserRow | null> {
   const pool = getPool();
   const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
   return rows[0] ? mapUser(rows[0]) : null;
+}
+
+export async function getPinHashById(id: string): Promise<string | null> {
+  const pool = getPool();
+  const { rows } = await pool.query('SELECT pin_hash FROM users WHERE id = $1', [id]);
+  return rows[0]?.pin_hash ?? null;
+}
+
+export async function updatePin(id: string, pinHash: string): Promise<void> {
+  const pool = getPool();
+  const now = new Date().toISOString();
+  await pool.query('UPDATE users SET pin_hash = $2, atualizado_em = $3 WHERE id = $1', [id, pinHash, now]);
+}
+
+export async function updateSenha(id: string, senhaHash: string): Promise<void> {
+  const pool = getPool();
+  const now = new Date().toISOString();
+  await pool.query('UPDATE users SET senha_hash = $2, atualizado_em = $3 WHERE id = $1', [id, senhaHash, now]);
 }
 
 export async function listUsers(): Promise<UserRow[]> {
@@ -69,8 +101,10 @@ function mapUser(row: Record<string, unknown>): UserRow {
     matricula: row.matricula as string,
     nome: row.nome as string,
     sobrenome: row.sobrenome as string,
+    email: (row.email as string | null) ?? undefined,
     perfil: row.perfil as Perfil,
     status: row.status as UserStatus,
+    temPin: Boolean(row.pin_hash),
     criadoEm: (row.criado_em as Date).toISOString(),
     atualizadoEm: (row.atualizado_em as Date).toISOString(),
   };

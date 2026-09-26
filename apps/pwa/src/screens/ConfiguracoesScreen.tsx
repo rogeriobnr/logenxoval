@@ -33,6 +33,40 @@ export function ConfiguracoesScreen() {
   const [pin, setPin] = useState('');
   const [msgRestaurar, setMsgRestaurar] = useState<{ kind: 'info' | 'error'; texto: string } | null>(null);
 
+  // Meu PIN
+  const [pinAtual, setPinAtual] = useState('');
+  const [novoPin, setNovoPin] = useState('');
+  const [novoPin2, setNovoPin2] = useState('');
+  const [msgPin, setMsgPin] = useState<{ kind: 'info' | 'error'; texto: string } | null>(null);
+  const [pinBusy, setPinBusy] = useState(false);
+
+  async function alterarPin() {
+    setMsgPin(null);
+    if (!/^\d{4,6}$/.test(novoPin)) {
+      setMsgPin({ kind: 'error', texto: 'O novo PIN deve ter de 4 a 6 dígitos.' });
+      return;
+    }
+    if (novoPin !== novoPin2) {
+      setMsgPin({ kind: 'error', texto: 'Os PINs não conferem.' });
+      return;
+    }
+    setPinBusy(true);
+    try {
+      await api.request<{ ok: boolean }>('POST', '/auth/change-pin', {
+        pinAtual: pinAtual,
+        novoPin,
+      });
+      setMsgPin({ kind: 'info', texto: 'PIN alterado. Ele passa a ser exigido nas confirmações sensíveis.' });
+      setPinAtual('');
+      setNovoPin('');
+      setNovoPin2('');
+    } catch (err) {
+      setMsgPin({ kind: 'error', texto: err instanceof Error ? err.message : 'Falha ao alterar o PIN.' });
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
   const carregarSnapshots = useCallback(async () => {
     if (!podeRestaurar || !depositoId || !online) return;
     setSnapErro(null);
@@ -222,6 +256,57 @@ export function ConfiguracoesScreen() {
         )}
       </div>
 
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="list-item">
+          <div>
+            <div className="list-title">Meu PIN</div>
+            <div className="list-sub">
+              O PIN é exigido nas confirmações sensíveis (designações, restaurações, desbloqueio de depósito). Cadastre
+              ou troque o seu PIN aqui.
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <Field
+            id="pin-atual"
+            type="password"
+            inputMode="numeric"
+            label="PIN atual"
+            placeholder="Se ainda não tem PIN, deixe vazio"
+            value={pinAtual}
+            onChange={(e) => setPinAtual(e.target.value.replace(/\D/g, ''))}
+          />
+          <Field
+            id="pin-novo"
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            label="Novo PIN (4 a 6 dígitos)"
+            placeholder="••••"
+            value={novoPin}
+            onChange={(e) => setNovoPin(e.target.value.replace(/\D/g, ''))}
+          />
+          <Field
+            id="pin-novo2"
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            label="Confirmar novo PIN"
+            placeholder="••••"
+            value={novoPin2}
+            onChange={(e) => setNovoPin2(e.target.value.replace(/\D/g, ''))}
+          />
+        </div>
+        <Btn onClick={() => void alterarPin()} disabled={pinBusy}>
+          {pinBusy ? 'Salvando…' : 'Alterar meu PIN'}
+        </Btn>
+        {msgPin && (
+          <div className="list-item" style={{ borderBottom: 'none' }}>
+            <Alert kind={msgPin.kind}>{msgPin.texto}</Alert>
+          </div>
+        )}
+      </div>
+
       <div className="card">
         <div className="list-item">
           <div>
@@ -268,13 +353,13 @@ export function ConfiguracoesScreen() {
                       value={matricula}
                       onChange={(e) => setMatricula(e.target.value)}
                     />
-                    <Field
-                      id={`pin-${s.id}`}
-                      type="password"
-                      label="PIN administrativo (se configurado)"
-                      value={pin}
-                      onChange={(e) => setPin(e.target.value)}
-                    />
+<Field
+                        id={`pin-${s.id}`}
+                        type="password"
+                        label="Seu PIN (se definido)"
+                        value={pin}
+                        onChange={(e) => setPin(e.target.value)}
+                      />
                     <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                       <Btn variant="danger" disabled={restaurandoId !== null} onClick={() => void restaurar(s.id)}>
                         Confirmar restauração

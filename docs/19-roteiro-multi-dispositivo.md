@@ -19,13 +19,16 @@ Dispositivo B = notebook. Duração estimada: 45–75 min.
 2. **B — notebook**: acesse a mesma URL.
 3. **Admin**: login no A com `ADMIN-001` e a senha do seed.
 4. **Criar depósito**: tela **Depósitos** → novo depósito, número **1001**, nome **Galpão A**.
-5. **Criar usuários** (tela **Usuários**), todos com senha definida por você:
+5. **Criar usuários** (tela **Usuários**), todos com senha **e PIN (4–6 dígitos)** definidos por você,
+   e e-mail real (para o teste de recuperação):
    - Líder: matrícula `LID-1001`, nome "Líder A", perfil **LÍDER**.
    - Mecânico 1: matrícula `MEC-1002`, perfil **MECÂNICO**.
    - Mecânico 2: matrícula `MEC-1003`, perfil **MECÂNICO**.
 6. **Designar depósito** (tela **Usuários** → expandir cada usuário → "Designar depósitos"):
    marque **Galpão A** para `LID-1001`, `MEC-1002` e `MEC-1003` (o admin `ADMIN-001` já
    tem acesso a todos). Sem essa concessão, o usuário não vê o depósito nem consegue baixar (403).
+   As designações são confirmadas com a **matrícula** do admin e o **PIN do admin** (mantenha o
+   PIN definido no passo 5).
 7. **Criar itens**: no A, tela **Enxoval** → "Importar nova versão" → cole 3 linhas
    `codigoSap|textoBreve|qtdOficial|unidade` e publique:
    ```
@@ -34,9 +37,13 @@ Dispositivo B = notebook. Duração estimada: 45–75 min.
    1002343|Botina Couro|6|PAR
    ```
 8. **Auto-cadastro (opcional)**: na tela de login de um aparelho, aba **Criar conta** —
-   crie `MEC-1004` (perfil **MECÂNICO**). Na tela **Usuários** do admin, o card mostra
-   "aguardando aprovação"; use **Ativar** e depois designe o depósito a ele (item 6).
-   Sem aprovação, tentar logar dá "Usuário aguardando aprovação do administrador" (403).
+   informe nome, matrícula, **e-mail** e escolha o **PIN** — crie `MEC-1004` (perfil **MECÂNICO**).
+   Na tela **Usuários** do admin, o card mostra "aguardando aprovação"; use **Ativar** e depois
+   designe o depósito a ele (item 6). Sem aprovação, tentar logar dá "Usuário aguardando
+   aprovação do administrador" (403).
+8b. **Líder cria usuário (opcional)**: faça login como `LID-1001` e abra **Usuários** — a lista
+   mostra apenas não-admins (sem o painel de bloqueio/designação). Crie `MEC-1005` (perfil
+   MECÂNICO, e-mail + PIN). Tente criar um usuário **ADMIN**: deve ser **negado (403)**.
 9. **Login nos dois aparelhos**: A e B com `MEC-1002`. Confira em **Logs** que o login
    de cada aparelho ficou registrado.
 
@@ -177,6 +184,30 @@ Objetivo: simular uma falha do servidor e confirmar que as operações da fila *
 - [ ] **Documento salvo** (na tela de documentos/enxoval) e **nova versão** do enxoval publicada;
   saldo do item reconhecido refletido nos dois aparelhos.
 - [ ] Marque `docs/18` §7.
+
+> [NOTA] _________________________________________________________________
+
+---
+
+## Bloco 8 — PIN por usuário e recuperação de senha
+
+- [ ] **PIN nas ações críticas**: com `MEC-1002` (que tem PIN), em depósito **Galpão A** tente
+  uma baixa no **Goldbox** pedindo confirmação com PIN → informe **PIN errado** → 403 "PIN
+  inválido"; informe o **PIN certo** → ok. Sem PIN definido, esses campos aparecem vazios e a
+  ação não exige PIN.
+- [ ] **Trocar o próprio PIN**: **Configurações → Meu PIN**, informe o PIN atual e o novo
+  (4–6 dígitos) → confira que uma baixa passa a exigir o novo PIN.
+- [ ] **Admin redefine PIN**: na tela **Usuários**, no card de um mecânico use **Redefinir PIN** →
+  informe um novo PIN → o usuário entra com o novo PIN nas confirmações.
+- [ ] **Recuperação de senha** (e-mail): com `MEC-1002` no A, faça logout. Na tela de login
+  toque **Esqueci minha senha** → informe o e-mail cadastrado → aparece a mensagem "Se o
+  e-mail estiver cadastrado…". No servidor sem SMTP, o link sai no log (dev); com `EMAIL_*`
+  configurado, chega por e-mail. Abra o link `?recuperar=<token>` → defina uma nova senha →
+  faça login com ela (a antiga deixa de funcionar e as sessões foram revogadas). Reabrir o
+  mesmo link → "inválido ou expirado".
+- [ ] **Sem vazamento**: pedir recuperação para um e-mail **não cadastrado** também retorna a
+  mesma mensagem genérica.
+- [ ] Marque as caixas do `docs/18` (adicione se necessário).
 
 > [NOTA] _________________________________________________________________
 
