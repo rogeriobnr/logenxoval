@@ -2,20 +2,22 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { DepositoRow } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toasts';
 import { listDepositosLocal, upsertDepositos } from '../repos/local';
 
 export function DepositsScreen() {
   const { api, session, changeDeposito } = useAuth();
+  const toast = useToast();
   const [deps, setDeps] = useState<DepositoRow[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadInfo, setLoadInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
 
   const [numero, setNumero] = useState('');
   const [nome, setNome] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [editNome, setEditNome] = useState('');
-  const [deactId, setDeactId] = useState<string | null>(null);
+  const [desativando, setDesativando] = useState<{ id: string; numero: string; nome: string } | null>(null);
   const [motivo, setMotivo] = useState('');
   const [pin, setPin] = useState('');
 
@@ -25,18 +27,18 @@ export function DepositsScreen() {
     if (!navigator.onLine) {
       const locais = await listDepositosLocal();
       setDeps(locais);
-      setLoadError('Modo offline — exibindo espelho local.');
+      setLoadInfo('Modo offline — exibindo espelho local.');
       return;
     }
     try {
       const res = await api.request<{ depositos: DepositoRow[] }>('GET', '/deposits');
       setDeps(res.depositos);
       await upsertDepositos(res.depositos);
-      setLoadError(null);
+      setLoadInfo(null);
     } catch (err) {
       const locais = await listDepositosLocal();
       setDeps(locais);
-      setLoadError(err instanceof Error ? `Falha na rede — exibindo espelho local. ${err.message}` : 'Não foi possível carregar os depósitos.');
+      setLoadInfo(err instanceof Error ? `Falha na rede — exibindo espelho local. ${err.message}` : 'Não foi possível carregar os depósitos.');
     }
   }, [api]);
 
@@ -47,7 +49,6 @@ export function DepositsScreen() {
   const criar = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    setMsg(null);
     try {
       await api.request<{ deposito: DepositoRow }>('POST', '/deposits', {
         numero: numero.trim(),
@@ -56,10 +57,10 @@ export function DepositsScreen() {
       });
       setNumero('');
       setNome('');
-      setMsg({ kind: 'info', text: 'Depósito criado com sucesso.' });
+      toast.success('Depósito criado com sucesso.');
       await carregar();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao criar depósito.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar depósito.');
     }
     setBusy(false);
   };
@@ -73,26 +74,28 @@ export function DepositsScreen() {
       });
       setEditId(null);
       setPin('');
+      toast.success('Nome do depósito atualizado.');
       await carregar();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao renomear.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao renomear.');
     }
   };
 
-  const desativar = async (id: string) => {
+  const desativar = async () => {
+    if (!desativando) return;
     try {
-      await api.request<{ deposito: DepositoRow }>('POST', `/deposits/${id}/deactivate`, {
+      await api.request<{ deposito: DepositoRow }>('POST', `/deposits/${desativando.id}/deactivate`, {
         matriculaConfirmacao: matricula,
         pin: pin.trim() || undefined,
         motivo: motivo.trim(),
       });
-      setDeactId(null);
+      setDesativando(null);
       setMotivo('');
       setPin('');
-      setMsg({ kind: 'info', text: 'Depósito desativado.' });
+      toast.success('Depósito desativado.');
       await carregar();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao desativar.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao desativar.');
     }
   };
 
@@ -100,8 +103,7 @@ export function DepositsScreen() {
     <div>
       <h2 className="screen-title">Depósitos</h2>
 
-      {loadError && <Alert kind="error">{loadError}</Alert>}
-      {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
+      {loadInfo && <Alert kind="warn">{loadInfo}</Alert>}
 
       <div className="card" style={{ marginBottom: '1rem' }}>
         <h3>Novo depósito</h3>
@@ -154,21 +156,7 @@ export function DepositsScreen() {
                 </div>
               )}
 
-              {deactId === d.id && (
-                <div style={{ marginTop: '0.5rem' }}>
-                  <Field
-                    id="deact-motivo"
-                    label="Motivo (mín. 5 caracteres)"
-                    value={motivo}
-                    onChange={(e) => setMotivo(e.target.value)}
-                    required
-                  />
-                  <Btn variant="danger" className="small" onClick={() => void desativar(d.id)}>
-                    Confirmar desativação
-                  </Btn>
-                </div>
-              )}
-            </div>
+              </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'flex-end' }}>
               <Btn
@@ -177,7 +165,6 @@ export function DepositsScreen() {
                 onClick={() => {
                   setEditId(editId === d.id ? null : d.id);
                   setEditNome(d.nome);
-                  setDeactId(null);
                 }}
               >
                 {editId === d.id ? 'Fechar' : 'Renomear'}
@@ -187,7 +174,9 @@ export function DepositsScreen() {
                   variant="danger"
                   className="small"
                   onClick={() => {
-                    setDeactId(deactId === d.id ? null : d.id);
+                    setDesativando({ id: d.id, numero: d.numero, nome: d.nome });
+                    setMotivo('');
+                    setPin('');
                     setEditId(null);
                   }}
                 >
@@ -203,6 +192,30 @@ export function DepositsScreen() {
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={desativando !== null}
+        title="Desativar depósito"
+        message={
+          desativando
+            ? `Desativar o depósito ${desativando.numero} · ${desativando.nome}? O enxoval ficará indisponível para baixas.`
+            : undefined
+        }
+        confirmLabel="Confirmar desativação"
+        danger
+        busy={busy}
+        onConfirm={() => void desativar()}
+        onCancel={() => setDesativando(null)}
+      >
+        <Field
+          id="deact-motivo"
+          label="Motivo (mín. 5 caracteres)"
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          required
+        />
+        <Field id="deact-pin" type="password" label="PIN administrativo (se configurado)" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="••••" />
+      </ConfirmDialog>
     </div>
   );
 }

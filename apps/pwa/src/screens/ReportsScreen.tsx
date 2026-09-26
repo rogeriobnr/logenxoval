@@ -8,7 +8,8 @@ import type {
   RequestRow,
 } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
-import { Alert, Btn, Field, SelectField } from '../components/ui';
+import { Btn, Field, SelectField } from '../components/ui';
+import { useToast } from '../components/Toasts';
 import { FiltroRelatorio, RelatorioTabela } from '../lib/relatorios';
 import {
   relatorioAuditLogs,
@@ -59,11 +60,11 @@ function baixarNome(base: string, ext: string): string {
 
 export function ReportsScreen() {
   const { session } = useAuth();
+  const toast = useToast();
   const [tipo, setTipo] = useState<TipoRelatorio>('enxoval');
   const [dataIni, setDataIni] = useState('');
   const [dataFim, setDataFim] = useState('');
   const [codigo, setCodigo] = useState('');
-  const [msg, setMsg] = useState<{ kind: 'error' | 'warn' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const carregar = useCallback(async (): Promise<RelatorioTabela> => {
@@ -112,15 +113,15 @@ export function ReportsScreen() {
 
   const exportar = async (formato: 'pdf' | 'png' | 'json') => {
     setBusy(true);
-    setMsg(null);
     try {
       const tab = await carregar();
       const nome = baixarNome(`relatorio-${tipo}`, formato);
       if (formato === 'pdf') baixarPdf(tab, nome);
       else if (formato === 'png') baixarPng(tab, nome);
       else baixarJson(tab, nome);
+      toast.success('Relatório gerado.');
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Falha ao gerar relatório' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao gerar relatório');
     } finally {
       setBusy(false);
     }
@@ -165,8 +166,6 @@ export function ReportsScreen() {
           <Btn variant="ghost" onClick={() => void exportar('json')} disabled={busy}>JSON</Btn>
         </div>
       </div>
-
-      {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
     </div>
   );
 }

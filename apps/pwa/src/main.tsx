@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AuthProvider } from './auth/AuthContext';
+import { ToastProvider } from './components/Toasts';
 import { App } from './App';
 import './styles.css';
 
@@ -10,7 +11,9 @@ if (!rootEl) throw new Error('Elemento #root ausente');
 createRoot(rootEl).render(
   <StrictMode>
     <AuthProvider>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </AuthProvider>
   </StrictMode>,
 );

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { InventoryItemRow } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
+import { useToast } from '../components/Toasts';
 import {
   confiancaDoCampo,
   extrairLinhas,
@@ -28,6 +29,7 @@ async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
 
 export function OcrReviewScreen() {
   const { api, session, online } = useAuth();
+  const toast = useToast();
   const depositoId = session?.depositoAtivo?.id ?? '';
   const perfil = session?.perfil ?? '';
   const pode = perfil === 'LIDER' || perfil === 'ADMIN';
@@ -42,7 +44,6 @@ export function OcrReviewScreen() {
   const [motivo, setMotivo] = useState('');
   const [pin, setPin] = useState('');
   const [matricula, setMatricula] = useState('');
-  const [msg, setMsg] = useState<{ kind: 'error' | 'warn' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -78,16 +79,15 @@ export function OcrReviewScreen() {
   };
 
   const aoSelecionar = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMsg(null);
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > MAX_UPLOAD) {
-      setMsg({ kind: 'error', text: 'Arquivo excede o limite de 20 MB.' });
+      toast.error('Arquivo excede o limite de 20 MB.');
       return;
     }
     const { tipo } = tamanhoDeDocumento(file);
     if (tipo !== 'FOTO' && tipo !== 'PDF') {
-      setMsg({ kind: 'error', text: 'Formato não suportado (use imagem ou PDF).' });
+      toast.error('Formato não suportado (use imagem ou PDF).');
       return;
     }
     setArquivo(file);
@@ -103,7 +103,7 @@ export function OcrReviewScreen() {
   const aplicarTexto = (texto: string) => {
     const bruto = extrairLinhas(texto);
     if (bruto.length === 0) {
-      setMsg({ kind: 'warn', text: 'Nenhum item reconhecido na folha. Ajuste o enquadramento e capture novamente.' });
+      toast.error('Nenhum item reconhecido na folha. Ajuste o enquadramento e capture novamente.');
       return;
     }
     const revisao = revisarLinhas(bruto, itensAtuais);
@@ -116,12 +116,9 @@ export function OcrReviewScreen() {
     try {
       const texto = await reconhecerDocumento(file);
       aplicarTexto(texto);
-      setMsg((m) => ({ kind: 'info', text: `Reconhecimento local (no aparelho). ${m?.text ?? ''}` }));
+      toast.info('Reconhecimento local (no aparelho).');
     } catch (err) {
-      setMsg({
-        kind: 'error',
-        text: err instanceof Error ? `Falha no OCR: ${err.message}` : 'Falha ao reconhecer a folha.',
-      });
+      toast.error(err instanceof Error ? `Falha no OCR: ${err.message}` : 'Falha ao reconhecer a folha.');
     } finally {
       setReconhecendo(false);
     }
@@ -132,22 +129,19 @@ export function OcrReviewScreen() {
     try {
       const texto = await reconhecerComIa(file, depositoId, api);
       aplicarTexto(texto);
-      setMsg({ kind: 'info', text: 'Itens reconhecidos por IA (Google Gemini). Confira e edite se necessário.' });
+      toast.info('Itens reconhecidos por IA (Google Gemini). Confira e edite se necessário.');
     } catch (err) {
       if (err instanceof ApiError && err.code === 'IA_NAO_CONFIGURADA') {
-        setMsg({ kind: 'info', text: 'IA não configurada neste servidor — usando o reconhecimento local (no aparelho).' });
+        toast.info('IA não configurada neste servidor — usando o reconhecimento local (no aparelho).');
         await reconhecerLocal(file);
         return;
       }
       if (isNetworkError(err) || (err instanceof ApiError && (err.code === 'IA_FALHOU' || err.code === 'VALIDATION_FAILED'))) {
-        setMsg({ kind: 'info', text: 'IA indisponível — usando o reconhecimento local (no aparelho).' });
+        toast.info('IA indisponível — usando o reconhecimento local (no aparelho).');
         await reconhecerLocal(file);
         return;
       }
-      setMsg({
-        kind: 'error',
-        text: err instanceof Error ? `Falha no OCR por IA: ${err.message}` : 'Falha ao reconhecer a folha.',
-      });
+      toast.error(err instanceof Error ? `Falha no OCR por IA: ${err.message}` : 'Falha ao reconhecer a folha.');
     } finally {
       setReconhecendo(false);
     }
@@ -155,11 +149,11 @@ export function OcrReviewScreen() {
 
   const publicar = async () => {
     if (!session || !arquivo || !motivo.trim()) {
-      setMsg({ kind: 'warn', text: 'Preencha o motivo e confirme a matrícula para publicar.' });
+      toast.error('Preencha o motivo e confirme a matrícula para publicar.');
       return;
     }
     if (!matricula.trim()) {
-      setMsg({ kind: 'warn', text: 'Digite sua matrícula para confirmar a publicação.' });
+      toast.error('Digite sua matrícula para confirmar a publicação.');
       return;
     }
     if (!online) {
@@ -178,10 +172,7 @@ export function OcrReviewScreen() {
           usuarioId: session.userId,
           matricula: session.matricula,
         });
-        setMsg({
-          kind: 'info',
-          text: 'Sem conexão — a folha ficou preservada no aparelho; publique quando voltar a ficar online.',
-        });
+        toast.info('Sem conexão — a folha ficou preservada no aparelho; publique quando voltar a ficar online.');
         setEtapa('captura');
         setArquivo(null);
         if (preview) {
@@ -189,15 +180,11 @@ export function OcrReviewScreen() {
           setPreview(null);
         }
       } catch (err) {
-        setMsg({
-          kind: 'error',
-          text: err instanceof Error ? `Falha ao preservar a folha: ${err.message}` : 'Falha ao preservar a folha.',
-        });
+        toast.error(err instanceof Error ? `Falha ao preservar a folha: ${err.message}` : 'Falha ao preservar a folha.');
       }
       return;
     }
     setBusy(true);
-    setMsg(null);
     try {
       // 1) preserva o documento original e faz upload (docs 6.1 / 12.6)
       const form = new FormData();
@@ -220,7 +207,7 @@ export function OcrReviewScreen() {
           itens: itensParaPublicacao(linhas),
         },
       );
-      setMsg({ kind: 'info', text: `Versão ${res.versao.versao} publicada com ${res.itens.length} item(ns).` });
+      toast.success(`Versão ${res.versao.versao} publicada com ${res.itens.length} item(ns).`);
       setEtapa('captura');
       setLinhas([]);
       setRefFolha('');
@@ -234,7 +221,7 @@ export function OcrReviewScreen() {
       }
       await carregar();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Falha ao publicar versão.' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao publicar versão.');
     } finally {
       setBusy(false);
     }
@@ -278,7 +265,6 @@ export function OcrReviewScreen() {
               <img src={preview} alt="Folha a reconhecer" style={{ maxWidth: '100%', borderRadius: 8, border: '1px solid var(--line)' }} />
             </div>
           )}
-          {msg && <div style={{ marginTop: '0.8rem' }}><Alert kind={msg.kind}>{msg.text}</Alert></div>}
         </div>
       </div>
     );
@@ -300,12 +286,6 @@ export function OcrReviewScreen() {
         </div>
         {preview && <img src={preview} alt="Folha" style={{ maxWidth: '100%', maxHeight: 180, borderRadius: 8, marginTop: '0.4rem' }} />}
       </div>
-
-      {msg && (
-        <div style={{ marginBottom: '0.8rem' }}>
-          <AlertChave msg={msg} />
-        </div>
-      )}
 
       <div className="card" style={{ marginBottom: '0.8rem' }}>
         <h3>Itens reconhecidos</h3>
@@ -376,8 +356,4 @@ export function OcrReviewScreen() {
 
 function ChipStatus({ status, label }: { status: string; label: string }) {
   return <span className={`chip ${status}`}>{label}</span>;
-}
-
-function AlertChave({ msg }: { msg: { kind: 'error' | 'warn' | 'info'; text: string } }) {
-  return <Alert kind={msg.kind}>{msg.text}</Alert>;
 }

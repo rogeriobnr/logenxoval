@@ -8,6 +8,8 @@ import type {
 } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field, SelectField } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toasts';
 import { assinarMatricula } from '../lib/assinatura';
 import {
   filtrarPecas,
@@ -40,8 +42,8 @@ const TIPOS_LIVRES: TipoMovimentoForm[] = [
 
 export function PecasScreen() {
   const { api, session, online } = useAuth();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>('pecas');
-  const [msg, setMsg] = useState<{ kind: 'error' | 'warn' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const depositoId = session?.depositoAtivo?.id ?? '';
@@ -74,6 +76,8 @@ export function PecasScreen() {
 
   // Sugestões
   const [sugestoes, setSugestoes] = useState<ConversionSuggestionRow[]>([]);
+  const [sugAlvo, setSugAlvo] = useState<{ s: ConversionSuggestionRow; acao: SugestaoStatus } | null>(null);
+  const [sugMotivo, setSugMotivo] = useState('');
 
   const recarregar = useCallback(async () => {
     if (!depositoId) return;
@@ -104,7 +108,6 @@ export function PecasScreen() {
     const quantidade = Number(entQtd);
     if (!entSap.trim() || !entDesc.trim() || !quantidade || quantidade <= 0 || !podeEntrada) return;
     setBusy(true);
-    setMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
       if (online) {
@@ -118,7 +121,7 @@ export function PecasScreen() {
           assinaturaMatricula: assinatura,
           matriculaConfirmacao: session.matricula,
         });
-        setMsg({ kind: 'info', text: 'Entrada registrada.' });
+        toast.success('Entrada registrada.');
       } else {
         await registrarEntradaPecaOffline({
           operationId: crypto.randomUUID(),
@@ -134,7 +137,7 @@ export function PecasScreen() {
           dispositivo: session.matricula,
           assinaturaMatricula: assinatura,
         });
-        setMsg({ kind: 'info', text: 'Entrada registrada offline — sincroniza quando reconectar.' });
+        toast.success('Entrada registrada offline — sincroniza quando reconectar.');
       }
       setEntSap('');
       setEntDesc('');
@@ -143,7 +146,7 @@ export function PecasScreen() {
       setEntradaAberta(false);
       await recarregar();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Falha ao registrar entrada' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao registrar entrada');
     } finally {
       setBusy(false);
     }
@@ -156,7 +159,6 @@ export function PecasScreen() {
     if (!quantidade || quantidade <= 0) return;
     if (online) {
       setBusy(true);
-      setMsg(null);
       try {
         const assinatura = await assinarMatricula(session.matricula);
         await api.request<{ peca: SparePartRow; movement: SparePartMovementRow }>(
@@ -171,9 +173,9 @@ export function PecasScreen() {
             matriculaConfirmacao: session.matricula,
           },
         );
-        setMsg({ kind: 'info', text: `${TIPO_MOVIMENTO_PECA_LABEL[tipo]} registrada.` });
+        toast.success(`${TIPO_MOVIMENTO_PECA_LABEL[tipo]} registrada.`);
       } catch (err) {
-        setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Falha ao movimentar peça' });
+        toast.error(err instanceof Error ? err.message : 'Falha ao movimentar peça');
         return;
       } finally {
         setBusy(false);
@@ -181,11 +183,10 @@ export function PecasScreen() {
     } else {
       // Offline: saída/uso/transferência informativa vão para a fila.
       if (movAlvo.id.startsWith('local:')) {
-        setMsg({ kind: 'warn', text: 'Sincronize primeiro — essa peça ainda não existe no servidor.' });
+        toast.error('Sincronize primeiro — essa peça ainda não existe no servidor.');
         return;
       }
       setBusy(true);
-      setMsg(null);
       try {
         const assinatura = await assinarMatricula(session.matricula);
         await registrarMovimentoPecaOffline({
@@ -200,9 +201,9 @@ export function PecasScreen() {
           dispositivo: session.matricula,
           assinaturaMatricula: assinatura,
         });
-        setMsg({ kind: 'info', text: `${TIPO_MOVIMENTO_PECA_LABEL[tipo]} registrada offline — sincroniza quando reconectar.` });
+        toast.success(`${TIPO_MOVIMENTO_PECA_LABEL[tipo]} registrada offline — sincroniza quando reconectar.`);
       } catch (err) {
-        setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Falha ao registrar movimento' });
+        toast.error(err instanceof Error ? err.message : 'Falha ao registrar movimento');
         return;
       } finally {
         setBusy(false);
@@ -218,15 +219,14 @@ export function PecasScreen() {
     if (!ajusteAlvo) return;
     const novoSaldo = Number(ajusteNovoSaldo);
     if (!Number.isInteger(novoSaldo) || novoSaldo < 0) {
-      setMsg({ kind: 'warn', text: 'Novo saldo deve ser um inteiro maior ou igual a zero.' });
+      toast.error('Novo saldo deve ser um inteiro maior ou igual a zero.');
       return;
     }
     if (!online) {
-      setMsg({ kind: 'warn', text: 'Ajuste autorizado exige conexão com a rede.' });
+      toast.error('Ajuste autorizado exige conexão com a rede.');
       return;
     }
     setBusy(true);
-    setMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
       await api.request<{ peca: SparePartRow }>(
@@ -241,9 +241,9 @@ export function PecasScreen() {
           matriculaConfirmacao: session.matricula,
         },
       );
-      setMsg({ kind: 'info', text: 'Saldo ajustado.' });
+      toast.success('Saldo ajustado.');
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Falha ao ajustar saldo' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao ajustar saldo');
       return;
     } finally {
       setBusy(false);
@@ -259,11 +259,10 @@ export function PecasScreen() {
     const quantidade = Number(movQtd);
     if (!quantidade || quantidade <= 0) return;
     if (!online) {
-      setMsg({ kind: 'warn', text: 'Descarte exige conexão (confirmação de liderança/PIN).' });
+      toast.error('Descarte exige conexão (confirmação de liderança/PIN).');
       return;
     }
     setBusy(true);
-    setMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
       await api.request<{ peca: SparePartRow }>(
@@ -278,9 +277,9 @@ export function PecasScreen() {
           matriculaConfirmacao: session.matricula,
         },
       );
-      setMsg({ kind: 'info', text: 'Descarte registrado.' });
+      toast.success('Descarte registrado.');
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Falha ao descartar' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao descartar');
       return;
     } finally {
       setBusy(false);
@@ -291,15 +290,15 @@ export function PecasScreen() {
     await recarregar();
   }
 
-  const responderSugestao = async (s: ConversionSuggestionRow, acao: SugestaoStatus) => {
-    const motivoBruto = acao === 'RECUSADA' ? window.prompt('Motivo da recusa:') : undefined;
-    if (acao === 'RECUSADA' && !motivoBruto) {
-      setMsg({ kind: 'warn', text: 'Motivo é obrigatório para recusar.' });
+  const responderSugestao = async (acao: SugestaoStatus) => {
+    if (!sugAlvo) return;
+    const { s } = sugAlvo;
+    const motivo = sugMotivo.trim() || undefined;
+    if (acao === 'RECUSADA' && !motivo) {
+      toast.error('Motivo é obrigatório para recusar.');
       return;
     }
-    const motivo = motivoBruto ?? undefined;
     setBusy(true);
-    setMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
       const payload = {
@@ -315,7 +314,7 @@ export function PecasScreen() {
           `/deposits/${depositoId}/conversion-suggestions/${s.id}/respond`,
           payload,
         );
-        setMsg({ kind: 'info', text: `Sugestão ${acao === 'ACEITA' ? 'aceita' : 'recusada'} e peças convertidas.` });
+        toast.success(`Sugestão ${acao === 'ACEITA' ? 'aceita' : 'recusada'} e peças convertidas.`);
       } else {
         await registrarRespostaSugestaoOffline({
           operationId: crypto.randomUUID(),
@@ -328,11 +327,13 @@ export function PecasScreen() {
           dispositivo: session.matricula,
           assinaturaMatricula: assinatura,
         });
-        setMsg({ kind: 'info', text: 'Resposta registrada offline — sincroniza quando reconectar.' });
+        toast.success('Resposta registrada offline — sincroniza quando reconectar.');
       }
+      setSugAlvo(null);
+      setSugMotivo('');
       await recarregar();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Falha ao responder sugestão' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao responder sugestão');
     } finally {
       setBusy(false);
     }
@@ -356,8 +357,6 @@ export function PecasScreen() {
           </div>
         </div>
       </div>
-
-      {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
 
       {tab === 'pecas' && (
         <>
@@ -420,66 +419,6 @@ export function PecasScreen() {
               ))}
             </div>
           </div>
-
-          {movAlvo && (
-            <div className="card" style={{ marginTop: '0.8rem' }}>
-              <h3>{movTipo === 'DESCARTE' ? 'Descartar peça' : `Movimentação de ${movAlvo.codigoSap}`}</h3>
-              <div className="list-sub">
-                {movAlvo.descricao} · saldo atual {movAlvo.quantidadeAtual}{online ? '' : ' · offline: vai para a fila'}
-              </div>
-              {movTipo !== 'DESCARTE' && (
-                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1 }}>
-                    <SelectField id="mv-tipo" label="Tipo" value={movTipo}
-                      onChange={(e) => setMovTipo(e.target.value as (typeof TIPOS_LIVRES)[number])}>
-                      {TIPOS_LIVRES.map((t) => <option key={t} value={t}>{TIPO_MOVIMENTO_PECA_LABEL[t]}</option>)}
-                    </SelectField>
-                  </div>
-                  <div style={{ width: '7rem' }}>
-                    <Field id="mv-qtd" label="Quantidade" type="number" min="1" value={movQtd} onChange={(e) => setMovQtd(e.target.value)} required />
-                  </div>
-                </div>
-              )}
-              {movTipo === 'DESCARTE' && (
-                <div style={{ display: 'flex', gap: '0.6rem' }}>
-                  <div style={{ width: '7rem' }}>
-                    <Field id="dc-qtd" label="Quantidade" type="number" min="1" value={movQtd} onChange={(e) => setMovQtd(e.target.value)} required />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <Field id="dc-motivo" label="Motivo do descarte" value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} placeholder="Ex.: material danificado" required />
-                  </div>
-                </div>
-              )}
-              {movTipo !== 'DESCARTE' && (
-                <Field id="mv-motivo" label="Motivo (opcional)" value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} />
-              )}
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
-                <Btn onClick={() => (movTipo === 'DESCARTE' ? void confirmarDescarte() : void confirmarMovimento())} disabled={busy} variant={movTipo === 'DESCARTE' ? 'danger' : 'primary'}>
-                  {busy ? 'Processando…' : `Confirmar ${TIPO_MOVIMENTO_PECA_LABEL[movTipo].toLowerCase()}`}
-                </Btn>
-                <Btn variant="ghost" onClick={() => setMovAlvo(null)}>Cancelar</Btn>
-              </div>
-            </div>
-          )}
-
-          {ajusteAlvo && (
-            <div className="card" style={{ marginTop: '0.8rem' }}>
-              <h3>Ajuste autorizado · {ajusteAlvo.codigoSap}</h3>
-              <div className="list-sub">Saldo atual: {ajusteAlvo.quantidadeAtual} · exige liderança e conexão</div>
-              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                <div style={{ width: '8rem' }}>
-                  <Field id="aj-saldo" label="Novo saldo" type="number" min="0" value={ajusteNovoSaldo} onChange={(e) => setAjusteNovoSaldo(e.target.value)} required />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <Field id="aj-motivo" label="Motivo" value={ajusteMotivo} onChange={(e) => setAjusteMotivo(e.target.value)} placeholder="Ex.: contagem física" required />
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
-                <Btn onClick={() => void confirmarAjuste()} disabled={busy}>Confirmar ajuste</Btn>
-                <Btn variant="ghost" onClick={() => setAjusteAlvo(null)}>Cancelar</Btn>
-              </div>
-            </div>
-          )}
         </>
       )}
 
@@ -506,8 +445,8 @@ export function PecasScreen() {
                   </span>
                   {s.status === 'PENDENTE' && podeEntrada && (
                     <div style={{ display: 'flex', gap: '0.3rem' }}>
-                      <Btn className="small" disabled={busy} onClick={() => void responderSugestao(s, 'ACEITA')}>Aceitar</Btn>
-                      <Btn variant="secondary" className="small" disabled={busy} onClick={() => void responderSugestao(s, 'RECUSADA')}>Recusar</Btn>
+                      <Btn className="small" disabled={busy} onClick={() => { setSugAlvo({ s, acao: 'ACEITA' }); setSugMotivo(''); }}>Aceitar</Btn>
+                      <Btn variant="secondary" className="small" disabled={busy} onClick={() => { setSugAlvo({ s, acao: 'RECUSADA' }); setSugMotivo(''); }}>Recusar</Btn>
                     </div>
                   )}
                 </div>
@@ -516,6 +455,67 @@ export function PecasScreen() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={movAlvo !== null}
+        title={movAlvo ? (movTipo === 'DESCARTE' ? 'Descartar peça' : `Movimentação de ${movAlvo.codigoSap}`) : ''}
+        message={
+          movAlvo
+            ? `${movAlvo.descricao} · saldo atual ${movAlvo.quantidadeAtual}${online ? '' : ' · offline: vai para a fila'}`
+            : undefined
+        }
+        confirmLabel={movTipo === 'DESCARTE' ? 'Confirmar descarte' : 'Confirmar movimento'}
+        danger={movTipo === 'DESCARTE'}
+        busy={busy}
+        onConfirm={() => (movTipo === 'DESCARTE' ? void confirmarDescarte() : void confirmarMovimento())}
+        onCancel={() => setMovAlvo(null)}
+      >
+        {movTipo !== 'DESCARTE' && (
+          <>
+            <SelectField id="mv-tipo" label="Tipo" value={movTipo}
+              onChange={(e) => setMovTipo(e.target.value as (typeof TIPOS_LIVRES)[number])}>
+              {TIPOS_LIVRES.map((t) => <option key={t} value={t}>{TIPO_MOVIMENTO_PECA_LABEL[t]}</option>)}
+            </SelectField>
+            <Field id="mv-qtd" label="Quantidade" type="number" min="1" value={movQtd} onChange={(e) => setMovQtd(e.target.value)} required />
+            <Field id="mv-motivo" label="Motivo (opcional)" value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} />
+          </>
+        )}
+        {movTipo === 'DESCARTE' && (
+          <Field id="dc-motivo" label="Motivo do descarte" value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} placeholder="Ex.: material danificado" required />
+        )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={ajusteAlvo !== null}
+        title={ajusteAlvo ? `Ajuste autorizado · ${ajusteAlvo.codigoSap}` : ''}
+        message={ajusteAlvo ? `Saldo atual: ${ajusteAlvo.quantidadeAtual} · exige liderança e conexão` : undefined}
+        confirmLabel="Confirmar ajuste"
+        busy={busy}
+        onConfirm={() => void confirmarAjuste()}
+        onCancel={() => setAjusteAlvo(null)}
+      >
+        <Field id="aj-saldo" label="Novo saldo" type="number" min="0" value={ajusteNovoSaldo} onChange={(e) => setAjusteNovoSaldo(e.target.value)} required />
+        <Field id="aj-motivo" label="Motivo" value={ajusteMotivo} onChange={(e) => setAjusteMotivo(e.target.value)} placeholder="Ex.: contagem física" required />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={sugAlvo !== null}
+        title={sugAlvo?.acao === 'ACEITA' ? 'Aceitar sugestão' : 'Recusar sugestão'}
+        message={
+          sugAlvo
+            ? `${sugAlvo.s.codigoSap} · ${sugAlvo.s.descricao} (${sugAlvo.s.qtdSugerida} item(ns))`
+            : undefined
+        }
+        confirmLabel={sugAlvo?.acao === 'ACEITA' ? 'Aceitar e converter' : 'Recusar'}
+        danger={sugAlvo?.acao !== 'ACEITA'}
+        busy={busy}
+        onConfirm={() => void responderSugestao(sugAlvo?.acao ?? 'ACEITA')}
+        onCancel={() => setSugAlvo(null)}
+      >
+        {sugAlvo?.acao === 'RECUSADA' && (
+          <Field id="sg-motivo" label="Motivo da recusa (obrigatório)" value={sugMotivo} onChange={(e) => setSugMotivo(e.target.value)} required placeholder="Ex.: peça necessária em outra frente" />
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

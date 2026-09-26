@@ -8,6 +8,8 @@ import type {
 } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field, SelectField } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toasts';
 import { assinarMatricula } from '../lib/assinatura';
 import { resumoDeItens, statusDeItem, TIPO_CORRECAO_LABEL, INSPECAO_STATUS_LABEL } from '../lib/conferencia';
 import { listInventoryItemsLocal } from '../repos/local';
@@ -40,22 +42,24 @@ function agora(): string {
 
 export function ConferenciaScreen() {
   const { api, session } = useAuth();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>('contar');
 
   const depositoId = session?.depositoAtivo?.id ?? '';
   const perfil = session?.perfil ?? '';
   const podeEstornar = perfil === 'LIDER' || perfil === 'ADMIN';
 
-  const [msg, setMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Contagem
   const [itensEnxoval, setItensEnxoval] = useState<InventoryItemRow[]>([]);
   const [contagens, setContagens] = useState<Record<string, string>>({});
+  const [conferidos, setConferidos] = useState<Record<string, boolean>>({});
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
-  const [filtro, setFiltro] = useState<'todos' | 'divergentes' | 'conferidos'>('todos');
+  const [filtro, setFiltro] = useState<'todos' | 'pendentes' | 'divergentes' | 'conferidos'>('todos');
   const [obsContagem, setObsContagem] = useState('');
+  const [confirmarRegistroOpen, setConfirmarRegistroOpen] = useState(false);
 
   // Histórico
   const [conferencias, setConferencias] = useState<InspecaoLista[]>([]);
@@ -100,60 +104,96 @@ export function ConferenciaScreen() {
     void carregarEnxoval();
   }, [carregarEnxoval]);
 
-  useEffect(() => {
-    if (!itensEnxoval.length || Object.keys(contagens).length) return;
-    const init: Record<string, string> = {};
-    for (const i of itensEnxoval) init[i.codigoSap] = String(i.qtdAtual);
-    setContagens(init);
-  }, [itensEnxoval, contagens]);
-
   if (!session || !session.depositoAtivo) {
     return <Alert kind="warn">Selecione um depósito ativo para conferir.</Alert>;
   }
 
   const itensContagem = useMemo(() => {
     const base = itensEnxoval.map((i) => {
+      const conferido = !!conferidos[i.codigoSap];
       const fisica = Number(contagens[i.codigoSap]);
       const finita = Number.isFinite(fisica) ? fisica : 0;
       return {
         item: i,
         qtdFisica: finita,
-        status: statusDeItem(i.qtdAtual, finita),
-      };
+        conferido,
+        status: conferido ? statusDeItem(i.qtdAtual, finita) : 'PENDENTE',
+      } as const;
     });
     const q = busca.trim().toLowerCase();
-    const comFiltro = filtro === 'todos' ? base : base.filter((b) => b.status === (filtro === 'divergentes' ? 'DIVERGENTE' : 'OK'));
+    let comFiltro = base;
+    if (filtro === 'divergentes') comFiltro = base.filter((b) => b.status === 'DIVERGENTE');
+    else if (filtro === 'conferidos') comFiltro = base.filter((b) => b.conferido && b.status !== 'DIVERGENTE');
+    else if (filtro === 'pendentes') comFiltro = base.filter((b) => !b.conferido);
     return q
       ? comFiltro.filter((b) => b.item.codigoSap.toLowerCase().includes(q) || b.item.textoBreve.toLowerCase().includes(q))
       : comFiltro;
-  }, [itensEnxoval, contagens, busca, filtro]);
+  }, [itensEnxoval, contagens, conferidos, busca, filtro]);
 
-  const resumoContagem = useMemo(
-    () => ({
-      total: itensEnxoval.length,
-      divergentes: itensContagemOriginal(itensEnxoval, contagens),
-    }),
-    [itensEnxoval, contagens],
-  );
+  const resumoContagem = useMemo(() => {
+    let conferidosC = 0;
+    let divergentes = 0;
+    let pendentes = 0;
+    for (const i of itensEnxoval) {
+      const conf = !!conferidos[i.codigoSap];
+      const fisica = Number(contagens[i.codigoSap]);
+      if (conf) {
+        conferidosC += 1;
+        if (Number.isFinite(fisica) && fisica !== i.qtdAtual) divergentes += 1;
+      } else {
+        pendentes += 1;
+      }
+    }
+    return { total: itensEnxoval.length, conferidosC, divergentes, pendentes };
+  }, [itensEnxoval, contagens, conferidos]);
+
+  const marcarConferido = (codigo: string) => {
+    setConferidos((p) => {
+      const atual = !!p[codigo];
+      if (!atual && (contagens[codigo] === undefined || contagens[codigo] === '')) {
+        const item = itensEnxoval.find((i) => i.codigoSap === codigo);
+        if (item) setContagens((c) => ({ ...c, [codigo]: String(item.qtdAtual) }));
+      }
+      return { ...p, [codigo]: !atual };
+    });
+  };
+
+  const definirFisica = (codigo: string, valor: string | number) => {
+    setContagens((c) => ({ ...c, [codigo]: String(valor) }));
+    setConferidos((p) => ({ ...p, [codigo]: true }));
+  };
 
   const registrarContagem = async (e: FormEvent) => {
     e.preventDefault();
+    if (resumoContagem.conferidosC + resumoContagem.pendentes === 0) {
+      toast.error('Nenhum item para registrar.');
+      return;
+    }
+    if (resumoContagem.conferidosC === 0) {
+      toast.error('Confira ao menos um item antes de registrar a conferência.');
+      return;
+    }
+    if (resumoContagem.pendentes > 0) {
+      setConfirmarRegistroOpen(true);
+      return;
+    }
+    await executarRegistro();
+  };
+
+  const executarRegistro = async () => {
     setBusy(true);
-    setMsg(null);
-    const itens = itensEnxoval
-      .map((i) => ({ codigoSap: i.codigoSap, qtdFisica: Number(contagens[i.codigoSap]) }))
-      .filter((i) => Number.isFinite(i.qtdFisica));
-    if (!itens.length) {
-      setMsg({ kind: 'error', text: 'Nenhum item para registrar.' });
-      setBusy(false);
-      return;
-    }
-    if (!navigator.onLine) {
-      setMsg({ kind: 'error', text: 'Conferência requer conexão (a fila offline cobre goldbox).' });
-      setBusy(false);
-      return;
-    }
     try {
+      const itens = itensEnxoval
+        .map((i) => ({
+          codigoSap: i.codigoSap,
+          qtdFisica: conferidos[i.codigoSap] ? Number(contagens[i.codigoSap]) : i.qtdAtual,
+        }))
+        .filter((i) => Number.isFinite(i.qtdFisica));
+      if (!navigator.onLine) {
+        toast.error('Conferência requer conexão (a fila offline cobre goldbox).');
+        setBusy(false);
+        return;
+      }
       const assinatura = await assinarMatricula(session.matricula);
       await api.request('POST', `/deposits/${depositoId}/inspections`, {
         hora: agora(),
@@ -162,19 +202,19 @@ export function ConferenciaScreen() {
         assinaturaMatricula: assinatura,
         matriculaConfirmacao: session.matricula,
       });
-      setMsg({ kind: 'info', text: 'Conferência registrada em andamento. Finalize pelo histórico.' });
+      toast.success('Conferência registrada em andamento. Finalize pelo histórico.');
+      setConfirmarRegistroOpen(false);
       setTab('historico');
       await carregarHistorico();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao registrar conferência.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao registrar conferência.');
     }
     setBusy(false);
   };
 
   const carregarHistorico = async () => {
-    setMsg(null);
     if (!navigator.onLine) {
-      setMsg({ kind: 'error', text: 'Histórico de conferências requer conexão.' });
+      toast.error('Histórico de conferências requer conexão.');
       setConferencias([]);
       return;
     }
@@ -182,12 +222,11 @@ export function ConferenciaScreen() {
       const res = await api.request<{ conferencias: InspecaoLista[] }>('GET', `/deposits/${depositoId}/inspections`);
       setConferencias(res.conferencias);
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao carregar histórico.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao carregar histórico.');
     }
   };
 
   const abrirDetalhe = async (inspecaoId: string) => {
-    setMsg(null);
     setDetalhe(null);
     try {
       const res = await api.request<ConferenciaDetalhe>('GET', `/deposits/${depositoId}/inspections/${inspecaoId}`);
@@ -197,7 +236,7 @@ export function ConferenciaScreen() {
         setPecas(sp.pecas);
       }
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao abrir conferência.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao abrir conferência.');
     }
   };
 
@@ -219,11 +258,9 @@ const abrirCorrecao = (item: InspectionItemRow) => {
     setCorrMatricula(session.matricula);
   };
 
-  const confirmarCorrecao = async (e: FormEvent) => {
-    e.preventDefault();
+  const confirmarCorrecao = async () => {
     if (!corrigirAlvo) return;
     setBusy(true);
-    setMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
       await api.request('POST', `/deposits/${depositoId}/inspections/${corrigirAlvo.inspectionId}/items/${corrigirAlvo.id}/correction`, {
@@ -235,21 +272,19 @@ const abrirCorrecao = (item: InspectionItemRow) => {
         assinaturaMatricula: assinatura,
         matriculaConfirmacao: corrMatricula.trim() || session.matricula,
       });
-      setMsg({ kind: 'info', text: 'Correção registrada.' });
+      toast.success('Correção registrada.');
       setCorrigirAlvo(null);
       setTiposUtilizados((p) => ({ ...p, [corrigirAlvo.id]: corrTipo }));
       if (detalhe) await abrirDetalhe(detalhe.inspecao.id);
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao corrigir item.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao corrigir item.');
     }
     setBusy(false);
   };
 
-  const confirmarEstorno = async (e: FormEvent) => {
-    e.preventDefault();
+  const confirmarEstorno = async () => {
     if (!estornarAlvo) return;
     setBusy(true);
-    setMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
       await api.request('POST', `/deposits/${depositoId}/inspections/${estornarAlvo.inspectionId}/items/${estornarAlvo.id}/revert-correction`, {
@@ -258,32 +293,31 @@ const abrirCorrecao = (item: InspectionItemRow) => {
         assinaturaMatricula: assinatura,
         matriculaConfirmacao: estornarMatricula.trim() || session.matricula,
       });
-      setMsg({ kind: 'info', text: 'Estorno da correção registrado — peça avulsa devolvida e saldo do enxoval debitado.' });
+      toast.success('Estorno da correção registrado — peça avulsa devolvida e saldo do enxoval debitado.');
       setEstornarAlvo(null);
       if (detalhe) await abrirDetalhe(detalhe.inspecao.id);
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao estornar correção.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao estornar correção.');
     }
     setBusy(false);
   };
 
-  const confirmarFinalizar = async (e: FormEvent) => {
-    e.preventDefault();
+  const confirmarFinalizar = async () => {
+    if (!detalhe) return;
     setBusy(true);
-    setMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
-      await api.request('POST', `/deposits/${depositoId}/inspections/${detalhe!.inspecao.id}/finalize`, {
+      await api.request('POST', `/deposits/${depositoId}/inspections/${detalhe.inspecao.id}/finalize`, {
         observacao: finalizarObs.trim() || undefined,
         assinaturaMatricula: assinatura,
         matriculaConfirmacao: finalizarMatricula.trim() || session.matricula,
       });
-      setMsg({ kind: 'info', text: 'Conferência concluída — divergências abertas no dashboard.' });
+      toast.success('Conferência concluída — divergências abertas no dashboard.');
       setFinalizarOpen(false);
-      await abrirDetalhe(detalhe!.inspecao.id);
+      await abrirDetalhe(detalhe.inspecao.id);
       await carregarHistorico();
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao finalizar conferência.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao finalizar conferência.');
     }
     setBusy(false);
   };
@@ -297,27 +331,26 @@ const abrirCorrecao = (item: InspectionItemRow) => {
     setRevisaoOpen(true);
   };
 
-  const confirmarRevisao = async (e: FormEvent) => {
-    e.preventDefault();
+  const confirmarRevisao = async () => {
+    if (!detalhe) return;
     setBusy(true);
-    setMsg(null);
     try {
       const assinatura = await assinarMatricula(session.matricula);
-      const itens = detalhe!.itens
+      const itens = detalhe.itens
         .map((i) => ({ codigoSap: i.codigoSap, qtdFisica: Number(revisaoItens[i.codigoSap]) }))
         .filter((i) => Number.isFinite(i.qtdFisica));
-      await api.request('POST', `/deposits/${depositoId}/inspections/${detalhe!.inspecao.id}/revision`, {
+      await api.request('POST', `/deposits/${depositoId}/inspections/${detalhe.inspecao.id}/revision`, {
         hora: agora(),
         itens,
         assinaturaMatricula: assinatura,
         matriculaConfirmacao: revisaoMatricula.trim() || session.matricula,
       });
-      setMsg({ kind: 'info', text: 'Revisão criada — nova conferência REVISADA referenciando a original.' });
+      toast.success('Revisão criada — nova conferência REVISADA referenciando a original.');
       setRevisaoOpen(false);
       await carregarHistorico();
       setDetalhe(null);
     } catch (err) {
-      setMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao revisar conferência.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao revisar conferência.');
     }
     setBusy(false);
   };
@@ -342,27 +375,26 @@ const abrirCorrecao = (item: InspectionItemRow) => {
         </Btn>
       </div>
 
-      {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
-
       {tab === 'contar' && (
         <form onSubmit={registrarContagem} className="card">
           <h3>Contagem do enxoval</h3>
-          <div className="list-sub">Saldo do sistema como padrão — ajuste o que divergir fisicamente.</div>
+          <div className="list-sub">Marque os itens como conferidos conforme a contagem física — nada entra sem ser conferido.</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.4rem' }}>
             <Field id="ct-busca" placeholder="Código SAP ou descrição" value={busca} onChange={(e) => setBusca(e.target.value)} />
             <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)} aria-label="Filtro de itens">
               <option value="todos">Todos</option>
+              <option value="pendentes">Pendentes</option>
               <option value="divergentes">Divergentes</option>
               <option value="conferidos">Conferidos</option>
             </select>
           </div>
           <div className="list-sub" style={{ margin: '0.4rem 0' }}>
-            {itensEnxoval.length} itens · {resumoContagem.divergentes} divergentes
+            {resumoContagem.total} itens · {resumoContagem.conferidosC} conferido(s) · {resumoContagem.divergentes} divergente(s) · {resumoContagem.pendentes} pendente(s)
           </div>
 
           <div style={{ maxHeight: '46vh', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px', marginBottom: '0.8rem' }}>
             {itensContagem.length === 0 && <div className="list-sub" style={{ padding: '0.5rem' }}>Nada encontrado.</div>}
-            {itensContagem.map(({ item, qtdFisica, status }) => (
+            {itensContagem.map(({ item, qtdFisica, status, conferido }) => (
               <div
                 key={item.id}
                 className="list-item"
@@ -377,26 +409,37 @@ const abrirCorrecao = (item: InspectionItemRow) => {
                   <div className="list-title">{item.codigoSap}</div>
                   <div className="list-sub">{item.textoBreve}</div>
                   <div className="list-sub">
-                    sistema {item.qtdAtual} {item.unidadeMedida ?? ''} · física {qtdFisica} {item.unidadeMedida ?? ''}
+                    {conferido
+                      ? `sistema ${item.qtdAtual} ${item.unidadeMedida ?? ''} · física ${qtdFisica} ${item.unidadeMedida ?? ''}`
+                      : `sistema ${item.qtdAtual} ${item.unidadeMedida ?? ''} — aguardando conferência`}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
-                  <span className={`chip ${status === 'DIVERGENTE' ? 'warn' : 'ok'}`}>{status}</span>
+                  <Btn
+                    variant={conferido ? (status === 'DIVERGENTE' ? 'danger' : 'primary') : 'ghost'}
+                    className="small"
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); marcarConferido(item.codigoSap); }}
+                  >
+                    {conferido ? (status === 'DIVERGENTE' ? '✗ Conferido (div.)' : '✓ Conferido') : 'Conferir'}
+                  </Btn>
+                  <span className={`chip ${status === 'DIVERGENTE' ? 'warn' : status === 'OK' ? 'ok' : 'muted'}`}>{status}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                     <Btn variant="ghost" className="small" type="button"
-                      onClick={(e) => { e.stopPropagation(); setContagens((p) => ({ ...p, [item.codigoSap]: String(Math.max(0, qtdFisica - 1)) })); }}>
+                      onClick={(e) => { e.stopPropagation(); definirFisica(item.codigoSap, Math.max(0, (Number(contagens[item.codigoSap]) || 0) - 1)); }}>
                       −
                     </Btn>
                     <input
                       type="number"
-                      value={contagens[item.codigoSap]}
-                      onChange={(e) => setContagens((p) => ({ ...p, [item.codigoSap]: e.target.value }))}
+                      value={contagens[item.codigoSap] ?? ''}
+                      placeholder={String(item.qtdAtual)}
+                      onChange={(e) => { definirFisica(item.codigoSap, e.target.value); }}
                       onClick={(e) => e.stopPropagation()}
                       style={{ width: '4.5rem', textAlign: 'center' }}
                       aria-label={`Quantidade física de ${item.codigoSap}`}
                     />
                     <Btn variant="ghost" className="small" type="button"
-                      onClick={(e) => { e.stopPropagation(); setContagens((p) => ({ ...p, [item.codigoSap]: String(qtdFisica + 1) })); }}>
+                      onClick={(e) => { e.stopPropagation(); definirFisica(item.codigoSap, (Number(contagens[item.codigoSap]) || 0) + 1); }}>
                       +
                     </Btn>
                   </div>
@@ -405,7 +448,14 @@ const abrirCorrecao = (item: InspectionItemRow) => {
             ))}
           </div>
           <Field id="ct-obs" label="Observação geral" value={obsContagem} onChange={(e) => setObsContagem(e.target.value)} placeholder="Opcional" />
-          <Btn type="submit" disabled={busy}>{busy ? 'Registrando…' : 'Registrar conferência (em andamento)'}</Btn>
+          <Btn type="submit" disabled={busy}>
+            {busy ? 'Registrando…' : `Registrar conferência (${resumoContagem.conferidosC}/${resumoContagem.total} conferidos)`}
+          </Btn>
+          {resumoContagem.pendentes > 0 && (
+            <div className="list-sub" style={{ marginTop: '0.3rem' }}>
+              {resumoContagem.pendentes} item(ns) ainda sem conferência serão registrados com a física igual ao sistema.
+            </div>
+          )}
         </form>
       )}
 
@@ -509,96 +559,108 @@ const abrirCorrecao = (item: InspectionItemRow) => {
         </div>
       )}
 
-      {corrigirAlvo && (
-        <form onSubmit={confirmarCorrecao} className="card" style={{ marginTop: '0.8rem' }}>
-          <h3>Correção de {corrigirAlvo.codigoSap}</h3>
-          <div className="list-sub">
-            sistema {corrigirAlvo.qtdSistema} · física {corrigirAlvo.qtdFisica} · diferença {corrigirAlvo.diferenca}
-          </div>
-          <SelectField id="co-tipo" label="Tratamento da divergência" value={corrTipo} onChange={(e) => setCorrTipo(e.target.value as TipoCorrecao)}>
-            {TIPOS.map((t) => <option key={t} value={t}>{TIPO_CORRECAO_LABEL[t]}</option>)}
-          </SelectField>
-          {corrTipo === 'CORRIGIR_COM_PECA_AVULSA' && (
-            <>
-              <SelectField id="co-peca" label="Peça avulsa (mesmo depósito)" value={corrSpareId}
-                onChange={(e) => setCorrSpareId(e.target.value)} required={pecasDoItem.length > 0}>
-                {pecasDoItem.length === 0 && <option value="">Sem peça avulsa disponível para este SAP</option>}
-                {pecasDoItem.map((p) => (
-                  <option key={p.id} value={p.id}>{p.codigoSap} · {p.descricao.slice(0, 40)} (saldo {p.quantidadeAtual})</option>
-                ))}
-              </SelectField>
-              <Field id="co-qtd" label="Quantidade aplicada" type="number" min="1" value={corrQtd} onChange={(e) => setCorrQtd(e.target.value)} required />
-            </>
-          )}
-          <Field id="co-obs" label="Observação" value={corrObs} onChange={(e) => setCorrObs(e.target.value)} placeholder="Opcional" />
-          <Field id="co-mat" label="Matrícula de confirmação" value={corrMatricula} onChange={(e) => setCorrMatricula(e.target.value)} required />
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
-            <Btn type="submit" disabled={busy}>{busy ? 'Corrigindo…' : 'Confirmar correção'}</Btn>
-            <Btn type="button" variant="ghost" onClick={() => setCorrigirAlvo(null)}>Cancelar</Btn>
-          </div>
-        </form>
-      )}
+      <ConfirmDialog
+        open={corrigirAlvo !== null}
+        title={`Correção de ${corrigirAlvo?.codigoSap ?? ''}`}
+        message={
+          corrigirAlvo
+            ? `sistema ${corrigirAlvo.qtdSistema} · física ${corrigirAlvo.qtdFisica} · diferença ${corrigirAlvo.diferenca}`
+            : undefined
+        }
+        confirmLabel="Confirmar correção"
+        busy={busy}
+        onConfirm={() => void confirmarCorrecao()}
+        onCancel={() => setCorrigirAlvo(null)}
+      >
+        <SelectField id="co-tipo" label="Tratamento da divergência" value={corrTipo} onChange={(e) => setCorrTipo(e.target.value as TipoCorrecao)}>
+          {TIPOS.map((t) => <option key={t} value={t}>{TIPO_CORRECAO_LABEL[t]}</option>)}
+        </SelectField>
+        {corrTipo === 'CORRIGIR_COM_PECA_AVULSA' && (
+          <>
+            <SelectField id="co-peca" label="Peça avulsa (mesmo depósito)" value={corrSpareId}
+              onChange={(e) => setCorrSpareId(e.target.value)} required={pecasDoItem.length > 0}>
+              {pecasDoItem.length === 0 && <option value="">Sem peça avulsa disponível para este SAP</option>}
+              {pecasDoItem.map((p) => (
+                <option key={p.id} value={p.id}>{p.codigoSap} · {p.descricao.slice(0, 40)} (saldo {p.quantidadeAtual})</option>
+              ))}
+            </SelectField>
+            <Field id="co-qtd" label="Quantidade aplicada" type="number" min="1" value={corrQtd} onChange={(e) => setCorrQtd(e.target.value)} required />
+          </>
+        )}
+        <Field id="co-obs" label="Observação" value={corrObs} onChange={(e) => setCorrObs(e.target.value)} placeholder="Opcional" />
+        <Field id="co-mat" label="Matrícula de confirmação" value={corrMatricula} onChange={(e) => setCorrMatricula(e.target.value)} required />
+      </ConfirmDialog>
 
-      {estornarAlvo && (
-        <form onSubmit={confirmarEstorno} className="card" style={{ marginTop: '0.8rem' }}>
-          <div className="list-title">Estornar correção de {estornarAlvo.codigoSap}</div>
-          <div className="list-sub">Devolve a peça avulsa usada e debita o saldo do enxoval.</div>
-          <Field id="et-motivo" label="Motivo" value={estornarMotivo} onChange={(e) => setEstornarMotivo(e.target.value)} required placeholder="Ex.: quantidade errada" />
-          <Field id="et-mat" label="Matrícula de confirmação" value={estornarMatricula} onChange={(e) => setEstornarMatricula(e.target.value)} required />
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
-            <Btn type="submit" variant="danger" disabled={busy}>{busy ? 'Estornando…' : 'Confirmar estorno'}</Btn>
-            <Btn type="button" variant="ghost" onClick={() => setEstornarAlvo(null)}>Cancelar</Btn>
-          </div>
-        </form>
-      )}
+      <ConfirmDialog
+        open={estornarAlvo !== null}
+        title={`Estornar correção de ${estornarAlvo?.codigoSap ?? ''}`}
+        message="Devolve a peça avulsa usada e debita o saldo do enxoval."
+        confirmLabel="Confirmar estorno"
+        danger
+        busy={busy}
+        onConfirm={() => void confirmarEstorno()}
+        onCancel={() => setEstornarAlvo(null)}
+      >
+        <Field id="et-motivo" label="Motivo" value={estornarMotivo} onChange={(e) => setEstornarMotivo(e.target.value)} required placeholder="Ex.: quantidade errada" />
+        <Field id="et-mat" label="Matrícula de confirmação" value={estornarMatricula} onChange={(e) => setEstornarMatricula(e.target.value)} required />
+      </ConfirmDialog>
 
-      {finalizarOpen && detalhe && (
-        <form onSubmit={confirmarFinalizar} className="card" style={{ marginTop: '0.8rem' }}>
-          <div className="list-title">Finalizar conferência</div>
-          <div className="list-sub">Serão abertas divergências CONFERENCIA para {detalhe.itens.filter((i) => i.status === 'DIVERGENTE').length} item(ns).</div>
-          <Field id="fn-obs" label="Observação" value={finalizarObs} onChange={(e) => setFinalizarObs(e.target.value)} placeholder="Opcional" />
-          <Field id="fn-mat" label="Matrícula de confirmação" value={finalizarMatricula} onChange={(e) => setFinalizarMatricula(e.target.value)} required />
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
-            <Btn type="submit" disabled={busy}>{busy ? 'Finalizando…' : 'Confirmar finalização'}</Btn>
-            <Btn type="button" variant="ghost" onClick={() => setFinalizarOpen(false)}>Cancelar</Btn>
-          </div>
-        </form>
-      )}
+      <ConfirmDialog
+        open={finalizarOpen && detalhe !== null}
+        title="Finalizar conferência"
+        message={
+          detalhe
+            ? `Serão abertas divergências CONFERENCIA para ${detalhe.itens.filter((i) => i.status === 'DIVERGENTE').length} item(ns).`
+            : undefined
+        }
+        confirmLabel="Confirmar finalização"
+        busy={busy}
+        onConfirm={() => void confirmarFinalizar()}
+        onCancel={() => setFinalizarOpen(false)}
+      >
+        <Field id="fn-obs" label="Observação" value={finalizarObs} onChange={(e) => setFinalizarObs(e.target.value)} placeholder="Opcional" />
+        <Field id="fn-mat" label="Matrícula de confirmação" value={finalizarMatricula} onChange={(e) => setFinalizarMatricula(e.target.value)} required />
+      </ConfirmDialog>
 
-      {revisaoOpen && detalhe && (
-        <form onSubmit={confirmarRevisao} className="card" style={{ marginTop: '0.8rem' }}>
-          <div className="list-title">Revisar contagem</div>
-          <div className="list-sub">Cria uma nova inspeção REVISADA; a original é preservada.</div>
-          <div style={{ maxHeight: '30vh', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px', marginBottom: '0.6rem' }}>
-            {detalhe.itens.map((i) => (
-              <div key={i.id} className="list-item">
-                <div className="list-title" style={{ flex: 1 }}>{i.codigoSap}</div>
-                <input
-                  type="number"
-                  value={revisaoItens[i.codigoSap] ?? ''}
-                  onChange={(e) => setRevisaoItens((p) => ({ ...p, [i.codigoSap]: e.target.value }))}
-                  style={{ width: '5rem' }}
-                  aria-label={`Quantidade revisada de ${i.codigoSap}`}
-                />
-              </div>
-            ))}
-          </div>
-          <Field id="rv-mat" label="Matrícula de confirmação" value={revisaoMatricula} onChange={(e) => setRevisaoMatricula(e.target.value)} required />
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.6rem' }}>
-            <Btn type="submit" disabled={busy}>{busy ? 'Criando…' : 'Criar revisão'}</Btn>
-            <Btn type="button" variant="ghost" onClick={() => setRevisaoOpen(false)}>Cancelar</Btn>
-          </div>
-        </form>
-      )}
+      <ConfirmDialog
+        open={revisaoOpen && detalhe !== null}
+        title="Revisar contagem"
+        message="Cria uma nova inspeção REVISADA; a original é preservada."
+        confirmLabel="Criar revisão"
+        busy={busy}
+        onConfirm={() => void confirmarRevisao()}
+        onCancel={() => setRevisaoOpen(false)}
+      >
+        <div style={{ maxHeight: '30vh', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px', marginBottom: '0.6rem' }}>
+          {detalhe?.itens.map((i) => (
+            <div key={i.id} className="list-item">
+              <div className="list-title" style={{ flex: 1 }}>{i.codigoSap}</div>
+              <input
+                type="number"
+                value={revisaoItens[i.codigoSap] ?? ''}
+                onChange={(e) => setRevisaoItens((p) => ({ ...p, [i.codigoSap]: e.target.value }))}
+                style={{ width: '5rem' }}
+                aria-label={`Quantidade revisada de ${i.codigoSap}`}
+              />
+            </div>
+          ))}
+        </div>
+        <Field id="rv-mat" label="Matrícula de confirmação" value={revisaoMatricula} onChange={(e) => setRevisaoMatricula(e.target.value)} required />
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={confirmarRegistroOpen}
+        title="Registrar com itens pendentes?"
+        message={
+          resumoContagem.pendentes > 0
+            ? `${resumoContagem.pendentes} item(ns) ainda não conferido(s) serão registrados com a física igual ao sistema. Continuar?`
+            : undefined
+        }
+        confirmLabel="Registrar mesmo assim"
+        busy={busy}
+        onConfirm={() => void executarRegistro()}
+        onCancel={() => setConfirmarRegistroOpen(false)}
+      />
     </div>
   );
-}
-
-function itensContagemOriginal(itens: InventoryItemRow[], contagens: Record<string, string>): number {
-  let div = 0;
-  for (const i of itens) {
-    const fisica = Number(contagens[i.codigoSap]);
-    if (Number.isFinite(fisica) && fisica !== i.qtdAtual) div += 1;
-  }
-  return div;
 }

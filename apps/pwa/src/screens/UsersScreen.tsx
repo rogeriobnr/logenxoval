@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { PERFIL, type DepositoRow } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field, SelectField } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toasts';
 
 interface UserInfo {
   id: string;
@@ -15,13 +17,20 @@ interface UserInfo {
   depositoIds?: string[];
 }
 
+type AcaoPendente =
+  | { tipo: 'status'; user: UserInfo; status: string; perfil?: string }
+  | { tipo: 'pin'; user: UserInfo; valor: string }
+  | { tipo: 'deposito'; user: UserInfo; depositoId: string };
+
 export function UsersScreen() {
   const { api, session } = useAuth();
+  const toast = useToast();
   const isAdmin = session?.perfil === PERFIL.ADMIN;
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [deps, setDeps] = useState<DepositoRow[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [acaoBusy, setAcaoBusy] = useState(false);
+  const [pendente, setPendente] = useState<AcaoPendente | null>(null);
 
   const [nome, setNome] = useState('');
   const [sobrenome, setSobrenome] = useState('');
@@ -30,7 +39,6 @@ export function UsersScreen() {
   const [senha, setSenha] = useState('');
   const [pin, setPin] = useState('');
   const [perfil, setPerfil] = useState<string>(PERFIL.MECANICO);
-  const [formMsg, setFormMsg] = useState<{ kind: 'error' | 'info' | 'warn'; text: string } | null>(null);
 
   // designação de depósito (admin)
   const [pinDesignacao, setPinDesignacao] = useState('');
@@ -40,13 +48,12 @@ export function UsersScreen() {
 
   // redefinição de PIN (admin)
   const [novoPinDe, setNovoPinDe] = useState<Record<string, string>>({});
-  const [resetPinBusy, setResetPinBusy] = useState<string | null>(null);
 
   const matriculaLogada = session?.matricula ?? '';
 
   const carregar = useCallback(async () => {
     if (!navigator.onLine) {
-      setLoadError('Offline: não é possível gerenciar usuários sem conexão.');
+      toast.error('Offline: não é possível gerenciar usuários sem conexão.');
       return;
     }
     try {
@@ -56,11 +63,10 @@ export function UsersScreen() {
         const depRes = await api.request<{ depositos: DepositoRow[] }>('GET', '/deposits');
         setDeps(depRes.depositos);
       }
-      setLoadError(null);
     } catch {
-      setLoadError('Não foi possível carregar os usuários.');
+      toast.error('Não foi possível carregar os usuários.');
     }
-  }, [api, isAdmin]);
+  }, [api, isAdmin, toast]);
 
   useEffect(() => {
     void carregar();
@@ -69,7 +75,6 @@ export function UsersScreen() {
   const criar = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    setFormMsg(null);
     try {
       await api.request<{ usuario: UserInfo }>('POST', '/users', {
         nome: nome.trim(),
@@ -86,59 +91,62 @@ export function UsersScreen() {
       setEmail('');
       setSenha('');
       setPin('');
-      setFormMsg({ kind: 'info', text: 'Usuário criado com sucesso.' });
+      toast.success('Usuário criado com sucesso.');
       await carregar();
     } catch (err) {
-      setFormMsg({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Erro ao criar usuário.',
-      });
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar usuário.');
     }
     setBusy(false);
   };
 
-  const atualizar = async (user: UserInfo, patch: { status?: string; perfil?: string }) => {
+  const atualizarPerfil = async (user: UserInfo, novoPerfil: string) => {
     try {
-      await api.request<{ ok: boolean }>('PATCH', `/users/${user.id}`, patch);
-      setFormMsg({ kind: 'info', text: `Usuário ${user.matricula} atualizado.` });
+      await api.request<{ ok: boolean }>('PATCH', `/users/${user.id}`, { perfil: novoPerfil });
+      toast.success(`Perfil do usuário ${user.matricula} atualizado.`);
       await carregar();
     } catch (err) {
-      setFormMsg({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Erro ao atualizar usuário.',
-      });
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar usuário.');
     }
   };
 
-  const redefinirPin = async (user: UserInfo) => {
+  const confirmarAcao = async () => {
+    if (!pendente) return;
+    setAcaoBusy(true);
+    try {
+      if (pendente.tipo === 'status') {
+        await api.request<{ ok: boolean }>('PATCH', `/users/${pendente.user.id}`, { status: pendente.status });
+        toast.success(
+          `Usuário ${pendente.user.matricula} ${pendente.status === 'ATIVO' ? 'reativado' : 'bloqueado'}.`,
+        );
+      } else if (pendente.tipo === 'pin') {
+        await api.request<{ ok: boolean }>('PATCH', `/users/${pendente.user.id}`, { novoPin: pendente.valor });
+        setNovoPinDe((m) => ({ ...m, [pendente.user.id]: '' }));
+        toast.success(`PIN de ${pendente.user.matricula} redefinido.`);
+      } else {
+        await executaDesignacao(pendente.user, pendente.depositoId, true);
+      }
+      setPendente(null);
+      if (pendente.tipo !== 'deposito') await carregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao executar a ação.');
+    }
+    setAcaoBusy(false);
+  };
+
+  const redefinirPin = (user: UserInfo) => {
     const valor = (novoPinDe[user.id] ?? '').trim();
     if (!/^\d{4,6}$/.test(valor)) {
-      setFormMsg({ kind: 'warn', text: 'Informe um PIN de 4 a 6 dígitos.' });
+      toast.error('Informe um PIN de 4 a 6 dígitos.');
       return;
     }
-    setResetPinBusy(user.id);
-    setFormMsg(null);
-    try {
-      await api.request<{ ok: boolean }>('PATCH', `/users/${user.id}`, { novoPin: valor });
-      setNovoPinDe((m) => ({ ...m, [user.id]: '' }));
-      setFormMsg({ kind: 'info', text: `PIN de ${user.matricula} redefinido.` });
-      await carregar();
-    } catch (err) {
-      setFormMsg({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Erro ao redefinir o PIN.',
-      });
-    }
-    setResetPinBusy(null);
+    setPendente({ tipo: 'pin', user, valor });
   };
 
-  const alternarDeposito = async (user: UserInfo, depositoId: string) => {
-    const concedido = (user.depositoIds ?? []).includes(depositoId);
+  const executaDesignacao = async (user: UserInfo, depositoId: string, revogando: boolean) => {
     setToggling(`${user.id}:${depositoId}`);
-    setFormMsg(null);
     const body = { matriculaConfirmacao: matriculaDesignacao.trim(), pin: pinDesignacao.trim() || undefined };
     try {
-      if (concedido) {
+      if (revogando) {
         await api.request<{ ok: boolean }>('DELETE', `/users/${user.id}/deposits/${depositoId}`, body);
       } else {
         await api.request<{ ok: boolean }>('POST', `/users/${user.id}/deposits`, {
@@ -146,20 +154,25 @@ export function UsersScreen() {
           depositoId,
         });
       }
-      setFormMsg({
-        kind: 'info',
-        text: concedido
+      toast.success(
+        revogando
           ? `Acesso do usuário ${user.matricula} ao depósito revogado.`
           : `Depósito designado ao usuário ${user.matricula}.`,
-      });
+      );
       await carregar();
     } catch (err) {
-      setFormMsg({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Erro ao designar depósito.',
-      });
+      toast.error(err instanceof Error ? err.message : 'Erro ao designar depósito.');
     }
     setToggling(null);
+  };
+
+  const alternarDeposito = (user: UserInfo, depositoId: string) => {
+    const concedido = (user.depositoIds ?? []).includes(depositoId);
+    if (concedido) {
+      setPendente({ tipo: 'deposito', user, depositoId });
+    } else {
+      void executaDesignacao(user, depositoId, false);
+    }
   };
 
   const descricaoStatus = (u: UserInfo) =>
@@ -168,9 +181,6 @@ export function UsersScreen() {
   return (
     <div>
       <h2 className="screen-title">Usuários</h2>
-
-      {loadError && <Alert kind="error">{loadError}</Alert>}
-      {formMsg && <Alert kind={formMsg.kind}>{formMsg.text}</Alert>}
 
       {!isAdmin && (
         <Alert kind="info">
@@ -303,7 +313,7 @@ export function UsersScreen() {
                                 type="checkbox"
                                 checked={marcado}
                                 disabled={toggling !== null}
-                                onChange={() => void alternarDeposito(u, d.id)}
+                                onChange={() => alternarDeposito(u, d.id)}
                               />
                               <span>
                                 {d.numero} · {d.nome}
@@ -324,11 +334,17 @@ export function UsersScreen() {
                   <Btn
                     variant={u.status === 'ATIVO' ? 'danger' : 'secondary'}
                     className="small"
-                    onClick={() => atualizar(u, { status: u.status === 'ATIVO' ? 'BLOQUEADO' : 'ATIVO' })}
+                    onClick={() =>
+                      setPendente({
+                        tipo: 'status',
+                        user: u,
+                        status: u.status === 'ATIVO' ? 'BLOQUEADO' : 'ATIVO',
+                      })
+                    }
                   >
                     {u.status === 'ATIVO' ? 'Bloquear' : 'Ativar'}
                   </Btn>
-                  <select value={u.perfil} onChange={(e) => atualizar(u, { perfil: e.target.value })}>
+                  <select value={u.perfil} onChange={(e) => void atualizarPerfil(u, e.target.value)}>
                     <option value={PERFIL.MECANICO}>Mecânico</option>
                     <option value={PERFIL.LIDER}>Líder</option>
                     <option value={PERFIL.ADMIN}>Administrador</option>
@@ -343,13 +359,8 @@ export function UsersScreen() {
                       onChange={(e) => setNovoPinDe((m) => ({ ...m, [u.id]: e.target.value.replace(/\D/g, '') }))}
                       style={{ width: '5.5rem', minHeight: '32px', padding: '0.25rem 0.5rem' }}
                     />
-                    <Btn
-                      variant="ghost"
-                      className="small"
-                      disabled={resetPinBusy !== null}
-                      onClick={() => void redefinirPin(u)}
-                    >
-                      {resetPinBusy === u.id ? '…' : 'Redefinir PIN'}
+                    <Btn variant="ghost" className="small" onClick={() => redefinirPin(u)}>
+                      Redefinir PIN
                     </Btn>
                   </div>
                 </div>
@@ -358,6 +369,39 @@ export function UsersScreen() {
           );
         })}
       </div>
+
+      <ConfirmDialog
+        open={pendente !== null}
+        title={
+          pendente?.tipo === 'status'
+            ? pendente.status === 'ATIVO'
+              ? 'Ativar usuário'
+              : 'Bloquear usuário'
+            : pendente?.tipo === 'pin'
+              ? 'Redefinir PIN'
+              : 'Revogar acesso ao depósito'
+        }
+        message={
+          pendente?.tipo === 'status'
+            ? `Tem certeza que deseja ${pendente.status === 'ATIVO' ? 'ativar' : 'bloquear'} ${pendente.user.nome} ${pendente.user.sobrenome} (${pendente.user.matricula})?`
+            : pendente?.tipo === 'pin'
+              ? `Redefinir o PIN de ${pendente.user.matricula}?`
+              : `Revogar o acesso de ${pendente?.user.matricula} ao depósito selecionado?`
+        }
+        confirmLabel={
+          pendente?.tipo === 'status'
+            ? pendente.status === 'ATIVO'
+              ? 'Ativar'
+              : 'Bloquear'
+            : pendente?.tipo === 'pin'
+              ? 'Redefinir PIN'
+              : 'Revogar acesso'
+        }
+        danger={!(pendente?.tipo === 'status' && pendente.status === 'ATIVO')}
+        busy={acaoBusy}
+        onConfirm={() => void confirmarAcao()}
+        onCancel={() => setPendente(null)}
+      />
     </div>
   );
 }

@@ -1,32 +1,32 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { Alert, Btn, Field } from '../components/ui';
+import { Btn, Field } from '../components/ui';
+import { useToast } from '../components/Toasts';
 import { navigate } from '../router';
 
 export function ChangePasswordScreen() {
   const { changePassword } = useAuth();
+  const toast = useToast();
   const [senhaAtual, setSenhaAtual] = useState('');
   const [novaSenha, setNovaSenha] = useState('');
   const [confirmar, setConfirmar] = useState('');
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    setMsg(null);
     if (novaSenha !== confirmar) {
-      setMsg({ kind: 'error', text: 'A confirmação não confere com a nova senha.' });
+      toast.error('A confirmação não confere com a nova senha.');
       return;
     }
     setBusy(true);
     const res = await changePassword(senhaAtual, novaSenha);
     if (res.ok) {
-      setMsg({ kind: 'info', text: 'Senha alterada com sucesso. O acesso offline foi atualizado neste aparelho.' });
+      toast.success('Senha alterada com sucesso. O acesso offline foi atualizado neste aparelho.');
       setSenhaAtual('');
       setNovaSenha('');
       setConfirmar('');
     } else {
-      setMsg({ kind: 'error', text: res.message });
+      toast.error(res.message);
     }
     setBusy(false);
   };
@@ -34,8 +34,6 @@ export function ChangePasswordScreen() {
   return (
     <div>
       <h2 className="screen-title">Alterar senha</h2>
-
-      {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
 
       <div className="card">
         <form onSubmit={submit}>

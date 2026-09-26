@@ -2,16 +2,17 @@ import { useState, type FormEvent } from 'react';
 import { PERFIL } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field, SelectField } from '../components/ui';
+import { useToast } from '../components/Toasts';
 import { ApiError } from '../lib/api';
 
 type Aba = 'entrar' | 'cadastro' | 'recuperar';
 
 export function LoginScreen() {
   const { login, online, api } = useAuth();
+  const toast = useToast();
   const [aba, setAba] = useState<Aba>('entrar');
   const [matricula, setMatricula] = useState('');
   const [senha, setSenha] = useState('');
-  const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
   // cadastro
@@ -24,32 +25,28 @@ export function LoginScreen() {
   const [cPin, setCPin] = useState('');
   const [cPin2, setCPin2] = useState('');
   const [cPerfil, setCPerfil] = useState<string>(PERFIL.MECANICO);
-  const [cadMsg, setCadMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   const [cadBusy, setCadBusy] = useState(false);
 
   // recuperação
   const [rEmail, setREmail] = useState('');
-  const [recMsg, setRecMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
   const [recBusy, setRecBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    setError(null);
     const res = await login(matricula, senha);
-    if (!res.ok) setError({ code: res.code, message: res.message });
+    if (!res.ok) toast.error(res.message);
     setBusy(false);
   };
 
   const cadastrar = async (e: FormEvent) => {
     e.preventDefault();
-    setCadMsg(null);
     if (cSenha !== cSenha2) {
-      setCadMsg({ kind: 'error', text: 'As senhas não conferem.' });
+      toast.error('As senhas não conferem.');
       return;
     }
     if (cPin !== cPin2) {
-      setCadMsg({ kind: 'error', text: 'Os PINs não conferem.' });
+      toast.error('Os PINs não conferem.');
       return;
     }
     setCadBusy(true);
@@ -63,10 +60,7 @@ export function LoginScreen() {
         perfil: cPerfil,
         pin: cPin,
       });
-      setCadMsg({
-        kind: 'info',
-        text: `Cadastro enviado para ${cMatricula.trim()}! Um administrador precisa aprovar antes do primeiro login.`,
-      });
+      toast.success(`Cadastro enviado para ${cMatricula.trim()}! Um administrador precisa aprovar antes do primeiro login.`);
       setMatricula(cMatricula.trim());
       setCNome('');
       setCSobrenome('');
@@ -78,15 +72,13 @@ export function LoginScreen() {
       setCPin2('');
       setAba('entrar');
     } catch (err) {
-      setCadMsg({
-        kind: 'error',
-        text:
-          err instanceof ApiError && err.code === 'CONFLITO'
-            ? 'Matrícula ou e-mail já cadastrados. Entre em contato com o administrador.'
-            : err instanceof Error
-              ? err.message
-              : 'Falha ao enviar o cadastro.',
-      });
+      toast.error(
+        err instanceof ApiError && err.code === 'CONFLITO'
+          ? 'Matrícula ou e-mail já cadastrados. Entre em contato com o administrador.'
+          : err instanceof Error
+            ? err.message
+            : 'Falha ao enviar o cadastro.',
+      );
     }
     setCadBusy(false);
   };
@@ -94,18 +86,11 @@ export function LoginScreen() {
   const recuperar = async (e: FormEvent) => {
     e.preventDefault();
     setRecBusy(true);
-    setRecMsg(null);
     try {
       await api.request<{ ok: boolean }>('POST', '/auth/forgot-password', { email: rEmail.trim() });
-      setRecMsg({
-        kind: 'info',
-        text: 'Se o e-mail estiver cadastrado, enviamos o link de recuperação. Verifique sua caixa de entrada (e o spam).',
-      });
+      toast.success('Se o e-mail estiver cadastrado, enviamos o link de recuperação. Verifique sua caixa de entrada (e o spam).');
     } catch (err) {
-      setRecMsg({
-        kind: 'error',
-        text: err instanceof Error ? err.message : 'Falha ao solicitar recuperação.',
-      });
+      toast.error(err instanceof Error ? err.message : 'Falha ao solicitar recuperação.');
     }
     setRecBusy(false);
   };
@@ -121,10 +106,10 @@ export function LoginScreen() {
         </div>
 
         <div className="tabs" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', justifyContent: 'center' }}>
-          <Btn variant={aba === 'entrar' ? 'primary' : 'ghost'} className="small" onClick={() => { setAba('entrar'); setError(null); setRecMsg(null); }}>
+          <Btn variant={aba === 'entrar' ? 'primary' : 'ghost'} className="small" onClick={() => setAba('entrar')}>
             Entrar
           </Btn>
-          <Btn variant={aba === 'cadastro' ? 'primary' : 'ghost'} className="small" onClick={() => { setAba('cadastro'); setError(null); setRecMsg(null); }}>
+          <Btn variant={aba === 'cadastro' ? 'primary' : 'ghost'} className="small" onClick={() => setAba('cadastro')}>
             Criar conta
           </Btn>
         </div>
@@ -138,7 +123,6 @@ export function LoginScreen() {
 
         {aba === 'entrar' && (
           <>
-            {error && <Alert kind="error">{error.message}</Alert>}
             <form onSubmit={submit}>
               <Field
                 id="matricula"
@@ -174,7 +158,6 @@ export function LoginScreen() {
 
         {aba === 'cadastro' && (
           <>
-            {cadMsg && <Alert kind={cadMsg.kind}>{cadMsg.text}</Alert>}
             <Alert kind="info">
               Crie sua conta (LÍDER ou MECÂNICO). O cadastro fica aguardando aprovação de um administrador antes do
               primeiro login.
@@ -235,7 +218,6 @@ export function LoginScreen() {
 
         {aba === 'recuperar' && (
           <>
-            {recMsg && <Alert kind={recMsg.kind}>{recMsg.text}</Alert>}
             <Alert kind="info">
               Informe o e-mail cadastrado na sua conta. Enviamos um link de redefinição válido por 30 minutos.
             </Alert>

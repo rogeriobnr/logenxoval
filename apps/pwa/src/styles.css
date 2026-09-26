@@ -377,3 +377,138 @@ textarea {
   color: var(--muted);
   font-size: 0.85rem;
 }
+
+/* ---------- Modal ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(16, 22, 19, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+}
+
+.modal-card {
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(16, 22, 19, 0.35);
+  width: 100%;
+  max-width: 440px;
+  max-height: min(85vh, 640px);
+  overflow-y: auto;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem 0;
+}
+
+.modal-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.modal-x {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+}
+
+.modal-x:hover {
+  color: var(--danger);
+}
+
+.modal-body {
+  padding: 0.75rem 1.25rem 1.25rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+/* ---------- Toasts ---------- */
+.toast-wrap {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: min(92vw, 380px);
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--info);
+  box-shadow: var(--shadow);
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast-success {
+  border-left-color: var(--ok);
+}
+
+.toast-error {
+  border-left-color: var(--danger);
+}
+
+.toast-info {
+  border-left-color: var(--info);
+}
+
+.toast-text {
+  flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.toast-x {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.toast-x:hover {
+  color: var(--danger);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 480px) {
+  .toast-wrap {
+    left: 0.75rem;
+    right: 0.75rem;
+    max-width: none;
+  }
+}

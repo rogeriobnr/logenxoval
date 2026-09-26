@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useToast } from '../components/Toasts';
 import { exportarBackupLocal, importarBackupLocal, EXTENSAO_BACKUP } from '../lib/backup';
 import { compartilharArquivo, podeCompartilharArquivos, salvarComDialogoOuDownload } from '../lib/exportar';
 import { ApiError, isNetworkError } from '../lib/api';
@@ -13,12 +15,12 @@ function dataCurta(iso: string): string {
 
 export function ConfiguracoesScreen() {
   const { session, online, api } = useAuth();
+  const toast = useToast();
   const depositoId = session?.depositoAtivo?.id;
   const podeRestaurar = !!session && session.perfil !== 'MECANICO';
 
   // Backup do dispositivo
   const [senhaBackup, setSenhaBackup] = useState('');
-  const [msgBackup, setMsgBackup] = useState<{ kind: 'info' | 'error'; texto: string } | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupFeito, setBackupFeito] = useState<{ nome: string; metodo: 'salvo' | 'download'; blob: Blob; senha: string } | null>(null);
   const [compartilhando, setCompartilhando] = useState(false);
@@ -26,28 +28,25 @@ export function ConfiguracoesScreen() {
 
   // Snapshots do servidor
   const [snapshots, setSnapshots] = useState<SnapshotListado[] | null>(null);
-  const [snapErro, setSnapErro] = useState<string | null>(null);
-  const [restaurandoId, setRestaurandoId] = useState<string | null>(null);
+  const [restaurando, setRestaurando] = useState<SnapshotListado | null>(null);
+  const [restaurarBusy, setRestaurarBusy] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [matricula, setMatricula] = useState(session?.matricula ?? '');
   const [pin, setPin] = useState('');
-  const [msgRestaurar, setMsgRestaurar] = useState<{ kind: 'info' | 'error'; texto: string } | null>(null);
 
   // Meu PIN
   const [pinAtual, setPinAtual] = useState('');
   const [novoPin, setNovoPin] = useState('');
   const [novoPin2, setNovoPin2] = useState('');
-  const [msgPin, setMsgPin] = useState<{ kind: 'info' | 'error'; texto: string } | null>(null);
   const [pinBusy, setPinBusy] = useState(false);
 
   async function alterarPin() {
-    setMsgPin(null);
     if (!/^\d{4,6}$/.test(novoPin)) {
-      setMsgPin({ kind: 'error', texto: 'O novo PIN deve ter de 4 a 6 dígitos.' });
+      toast.error('O novo PIN deve ter de 4 a 6 dígitos.');
       return;
     }
     if (novoPin !== novoPin2) {
-      setMsgPin({ kind: 'error', texto: 'Os PINs não conferem.' });
+      toast.error('Os PINs não conferem.');
       return;
     }
     setPinBusy(true);
@@ -56,12 +55,12 @@ export function ConfiguracoesScreen() {
         pinAtual: pinAtual,
         novoPin,
       });
-      setMsgPin({ kind: 'info', texto: 'PIN alterado. Ele passa a ser exigido nas confirmações sensíveis.' });
+      toast.success('PIN alterado. Ele passa a ser exigido nas confirmações sensíveis.');
       setPinAtual('');
       setNovoPin('');
       setNovoPin2('');
     } catch (err) {
-      setMsgPin({ kind: 'error', texto: err instanceof Error ? err.message : 'Falha ao alterar o PIN.' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao alterar o PIN.');
     } finally {
       setPinBusy(false);
     }
@@ -69,11 +68,10 @@ export function ConfiguracoesScreen() {
 
   const carregarSnapshots = useCallback(async () => {
     if (!podeRestaurar || !depositoId || !online) return;
-    setSnapErro(null);
     try {
       setSnapshots(await listarSnapshots(api, depositoId));
     } catch (err) {
-      setSnapErro(
+      toast.error(
         isNetworkError(err)
           ? 'Offline: não foi possível carregar os pontos de restauração.'
           : err instanceof Error
@@ -82,17 +80,16 @@ export function ConfiguracoesScreen() {
       );
       setSnapshots([]);
     }
-  }, [api, depositoId, podeRestaurar, online]);
+  }, [api, depositoId, podeRestaurar, online, toast]);
 
   useEffect(() => {
     void carregarSnapshots();
   }, [carregarSnapshots]);
 
   async function exportar() {
-    setMsgBackup(null);
     setBackupFeito(null);
     if (!senhaBackup) {
-      setMsgBackup({ kind: 'error', texto: 'Informe uma senha para o arquivo de backup.' });
+      toast.error('Informe uma senha para o arquivo de backup.');
       return;
     }
     setBackupBusy(true);
@@ -101,13 +98,13 @@ export function ConfiguracoesScreen() {
       const nome = `logenxoval-backup-${new Date().toISOString().slice(0, 10)}${EXTENSAO_BACKUP}`;
       const metodo = await salvarComDialogoOuDownload(blob, nome, 'application/octet-stream');
       if (metodo === 'cancelado') {
-        setMsgBackup({ kind: 'error', texto: 'Exportação cancelada — nenhum arquivo foi salvo.' });
+        toast.error('Exportação cancelada — nenhum arquivo foi salvo.');
         return;
       }
       setBackupFeito({ nome, metodo, blob, senha: senhaBackup });
       setSenhaBackup('');
     } catch (err) {
-      setMsgBackup({ kind: 'error', texto: err instanceof Error ? err.message : 'Falha ao gerar o backup.' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao gerar o backup.');
     } finally {
       setBackupBusy(false);
     }
@@ -118,63 +115,56 @@ export function ConfiguracoesScreen() {
     setCompartilhando(true);
     const ok = await compartilharArquivo(backupFeito.blob, backupFeito.nome);
     setCompartilhando(false);
-    if (!ok) setMsgBackup({ kind: 'error', texto: 'Compartilhamento indisponível — transfira o arquivo por outro meio (WhatsApp, e-mail, pen drive).' });
+    if (!ok) toast.error('Compartilhamento indisponível — transfira o arquivo por outro meio (WhatsApp, e-mail, pen drive).');
   }
 
   async function importarDeArquivo(file: File) {
-    setMsgBackup(null);
     if (!senhaBackup) {
-      setMsgBackup({ kind: 'error', texto: 'Informe a senha usada no backup antes de importar.' });
+      toast.error('Informe a senha usada no backup antes de importar.');
       return;
     }
     setBackupBusy(true);
     try {
       const conteudo = await file.text();
       await importarBackupLocal(senhaBackup, conteudo);
-      setMsgBackup({
-        kind: 'info',
-        texto: 'Restauração aplicada. Na próxima sincronização o servidor re-confirma os operationIds preservados.',
-      });
+      toast.success('Restauração aplicada. Na próxima sincronização o servidor re-confirma os operationIds preservados.');
     } catch (err) {
-      setMsgBackup({ kind: 'error', texto: err instanceof Error ? err.message : 'Falha ao importar o backup.' });
+      toast.error(err instanceof Error ? err.message : 'Falha ao importar o backup.');
     } finally {
       setBackupBusy(false);
     }
   }
 
-  async function restaurar(snapshotId: string) {
-    setMsgRestaurar(null);
-    if (!depositoId) return;
+  async function restaurar() {
+    if (!restaurando || !depositoId) return;
     if (!motivo.trim() || !matricula.trim()) {
-      setMsgRestaurar({ kind: 'error', texto: 'Motivo e matrícula de confirmação são obrigatórios.' });
+      toast.error('Motivo e matrícula de confirmação são obrigatórios.');
       return;
     }
-    setRestaurandoId(snapshotId);
+    setRestaurarBusy(true);
     try {
       const res = await restaurarSnapshotV12(api, {
         depositoId,
-        snapshotId,
+        snapshotId: restaurando.id,
         motivo: motivo.trim(),
         matriculaConfirmacao: matricula.trim(),
         pin: pin || undefined,
       });
-      setMsgRestaurar({
-        kind: 'info',
-        texto: `Restaurado: nova versão ${res.versao.versao} publicada com ${res.itens.length} itens. Goldbox e logs preservados.`,
-      });
+      toast.success(`Restaurado: nova versão ${res.versao.versao} publicada com ${res.itens.length} itens. Goldbox e logs preservados.`);
       setMotivo('');
       setPin('');
+      setRestaurando(null);
       await carregarSnapshots();
     } catch (err) {
       if (err instanceof ApiError && err.code === 'MATRICULA_INVALIDA') {
-        setMsgRestaurar({ kind: 'error', texto: 'Matrícula de confirmação não confere com o usuário logado.' });
+        toast.error('Matrícula de confirmação não confere com o usuário logado.');
       } else if (isNetworkError(err)) {
-        setMsgRestaurar({ kind: 'error', texto: 'Sem conexão com o servidor para restaurar.' });
+        toast.error('Sem conexão com o servidor para restaurar.');
       } else {
-        setMsgRestaurar({ kind: 'error', texto: err instanceof Error ? err.message : 'Falha na restauração.' });
+        toast.error(err instanceof Error ? err.message : 'Falha na restauração.');
       }
     } finally {
-      setRestaurandoId(null);
+      setRestaurarBusy(false);
     }
   }
 
@@ -224,12 +214,6 @@ export function ConfiguracoesScreen() {
             }}
           />
         </div>
-        {msgBackup && (
-          <div className="list-item" style={{ borderBottom: 'none' }}>
-            <Alert kind={msgBackup.kind}>{msgBackup.texto}</Alert>
-          </div>
-        )}
-
         {backupFeito && (
           <div className="card" style={{ marginTop: '0.8rem', border: '1px solid var(--line)', borderRadius: '8px', padding: '0.8rem' }}>
             <div className="list-title ok">Backup pronto: {backupFeito.nome}</div>
@@ -300,11 +284,6 @@ export function ConfiguracoesScreen() {
         <Btn onClick={() => void alterarPin()} disabled={pinBusy}>
           {pinBusy ? 'Salvando…' : 'Alterar meu PIN'}
         </Btn>
-        {msgPin && (
-          <div className="list-item" style={{ borderBottom: 'none' }}>
-            <Alert kind={msgPin.kind}>{msgPin.texto}</Alert>
-          </div>
-        )}
       </div>
 
       <div className="card">
@@ -322,14 +301,12 @@ export function ConfiguracoesScreen() {
 
         {podeRestaurar && !online && <Alert kind="warn">Offline: a lista de pontos de restauração precisa de conexão.</Alert>}
 
-        {podeRestaurar && online && snapErro && <Alert kind="error">{snapErro}</Alert>}
-
         {podeRestaurar && online && snapshots !== null && snapshots.length === 0 && (
           <Alert kind="info">Nenhum ponto de restauração registrado para este depósito.</Alert>
         )}
 
         {podeRestaurar && online && snapshots?.map((s) => {
-          const abrindo = restaurandoId === s.id;
+          const abrindo = restaurando?.id === s.id;
           return (
             <div className="list-item" key={s.id}>
               <div style={{ flex: 1 }}>
@@ -338,54 +315,35 @@ export function ConfiguracoesScreen() {
                   {s.tipo} · {dataCurta(s.dataEm)} · {s.matricula}
                   {s.motivo ? ` — ${s.motivo}` : ''}
                 </div>
-                {abrindo && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <Field
-                      id={`motivo-${s.id}`}
-                      label="Motivo (obrigatório)"
-                      placeholder="Ex.: inconsistência detectada na conferência"
-                      value={motivo}
-                      onChange={(e) => setMotivo(e.target.value)}
-                    />
-                    <Field
-                      id={`matricula-${s.id}`}
-                      label="Matrícula de confirmação"
-                      value={matricula}
-                      onChange={(e) => setMatricula(e.target.value)}
-                    />
-<Field
-                        id={`pin-${s.id}`}
-                        type="password"
-                        label="Seu PIN (se definido)"
-                        value={pin}
-                        onChange={(e) => setPin(e.target.value)}
-                      />
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                      <Btn variant="danger" disabled={restaurandoId !== null} onClick={() => void restaurar(s.id)}>
-                        Confirmar restauração
-                      </Btn>
-                      <Btn variant="ghost" onClick={() => setRestaurandoId(null)} disabled={restaurandoId !== null}>
-                        Cancelar
-                      </Btn>
-                    </div>
-                  </div>
-                )}
               </div>
               {!abrindo && (
-                <Btn variant="secondary" className="small" onClick={() => setRestaurandoId(s.id)}>
+                <Btn variant="secondary" className="small" onClick={() => setRestaurando(s)}>
                   Restaurar
                 </Btn>
               )}
             </div>
           );
         })}
-
-        {msgRestaurar && (
-          <div className="list-item" style={{ borderBottom: 'none' }}>
-            <Alert kind={msgRestaurar.kind}>{msgRestaurar.texto}</Alert>
-          </div>
-        )}
       </div>
+
+      <ConfirmDialog
+        open={restaurando !== null}
+        title="Confirmar restauração"
+        message={
+          restaurando
+            ? `Restaurar o enxoval para "${restaurando.titulo}" (${restaurando.tipo}, ${dataCurta(restaurando.dataEm)})? Uma nova versão será publicada.`
+            : undefined
+        }
+        confirmLabel="Confirmar restauração"
+        danger
+        busy={restaurarBusy}
+        onConfirm={() => void restaurar()}
+        onCancel={() => setRestaurando(null)}
+      >
+        <Field id="motivo-r" label="Motivo (obrigatório)" placeholder="Ex.: inconsistência detectada na conferência" value={motivo} onChange={(e) => setMotivo(e.target.value)} required />
+        <Field id="matricula-r" label="Matrícula de confirmação" value={matricula} onChange={(e) => setMatricula(e.target.value)} required placeholder="000123" />
+        <Field id="pin-r" type="password" label="Seu PIN (se definido)" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="••••" />
+      </ConfirmDialog>
     </div>
   );
 }

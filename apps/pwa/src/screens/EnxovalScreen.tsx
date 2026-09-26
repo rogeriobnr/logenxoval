@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import type { DepositVersionRow, InventoryItemRow } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
+import { useToast } from '../components/Toasts';
 import { parseLinhasEnxoval } from '../lib/enxoval';
 import { navigate } from '../router';
 import {
@@ -14,13 +15,13 @@ import {
 
 export function EnxovalScreen() {
   const { api, session } = useAuth();
+  const toast = useToast();
   const [itens, setItens] = useState<InventoryItemRow[]>([]);
   const [versao, setVersao] = useState<DepositVersionRow | null>(null);
   const [versoes, setVersoes] = useState<DepositVersionRow[]>([]);
   const [busca, setBusca] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [verHistorico, setVerHistorico] = useState(false);
-  const [formMsg, setFormMsg] = useState<{ kind: 'error' | 'info'; text: string } | null>(null);
 
   const [linhas, setLinhas] = useState('');
   const [refFolha, setRefFolha] = useState('');
@@ -114,15 +115,14 @@ export function EnxovalScreen() {
   const importar = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    setFormMsg(null);
     const { itens: parsed, erros } = parseLinhasEnxoval(linhas);
     if (erros.length > 0) {
-      setFormMsg({ kind: 'error', text: `Corrija as linhas inválidas: ${erros.join('; ')}` });
+      toast.error(`Corrija as linhas inválidas: ${erros.join('; ')}`);
       setBusy(false);
       return;
     }
     if (parsed.length === 0) {
-      setFormMsg({ kind: 'error', text: 'Informe ao menos um item.' });
+      toast.error('Informe ao menos um item.');
       setBusy(false);
       return;
     }
@@ -145,10 +145,10 @@ export function EnxovalScreen() {
       setRefFolha('');
       setMotivo('');
       setPin('');
-      setFormMsg({ kind: 'info', text: `Enxoval publicado (${parsed.length} item(ns)).` });
+      toast.success(`Enxoval publicado (${parsed.length} item(ns)).`);
       await carregar();
     } catch (err) {
-      setFormMsg({ kind: 'error', text: err instanceof Error ? err.message : 'Erro ao importar enxoval.' });
+      toast.error(err instanceof Error ? err.message : 'Erro ao importar enxoval.');
     }
     setBusy(false);
   };
@@ -253,7 +253,6 @@ export function EnxovalScreen() {
             </div>
             <Field id="enx-ref" label="Referência da folha (opcional)" value={refFolha} onChange={(e) => setRefFolha(e.target.value)} />
             <Field id="enx-motivo" label="Motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} required />
-            {formMsg && <Alert kind={formMsg.kind}>{formMsg.text}</Alert>}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
               <Field id="enx-pin" label="PIN" type="password" value={pin} onChange={(e) => setPin(e.target.value)} />
               <Btn type="submit" disabled={busy}>
