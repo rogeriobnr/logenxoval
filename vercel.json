@@ -13,6 +13,7 @@
     { "source": "/users/:path*", "destination": "/api" },
     { "source": "/deposits/:path*", "destination": "/api" },
     { "source": "/documents/:path*", "destination": "/api" },
+    { "source": "/ocr/:path*", "destination": "/api" },
     { "source": "/sync", "destination": "/api" },
     { "source": "/health", "destination": "/api" }
   ]
