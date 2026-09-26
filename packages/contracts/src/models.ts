@@ -261,6 +261,7 @@ export interface DivergenceRow {
   id: string;
   depositoId: string;
   codigoSap: string;
+  descricao?: string | null;
   tipo: DivergenciaTipo;
   quantidade: number;
   status: DivergenciaStatus;

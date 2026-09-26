@@ -665,6 +665,17 @@ export async function upsertRequests(requests: RequestRow[]): Promise<void> {
   });
 }
 
+/**
+ * Fase 19: espelha as divergências do servidor no IndexedDB, permitindo que
+ * qualquer dispositivo do depósito veja as pendências (e resoluções) criadas
+ * em outros aparelhos.
+ */
+export async function upsertDivergences(divergencias: DivergenceRow[]): Promise<void> {
+  await db.transaction('rw', db.divergences, async () => {
+    for (const d of divergencias) await db.divergences.put(d);
+  });
+}
+
 export async function listConsumiveisLocal(depositoId: string): Promise<ConsumableRow[]> {
   const rows = await db.consumables.where('depositoId').equals(depositoId).toArray();
   const porCodigo = new Map<string, ConsumableRow>();

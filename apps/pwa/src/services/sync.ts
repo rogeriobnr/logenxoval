@@ -4,6 +4,7 @@ import type {
   ConversionSuggestionRow,
   DepositVersionRow,
   DepositoRow,
+  DivergenceRow,
   InventoryItemRow,
   PpeItemRow,
   RequestRow,
@@ -25,6 +26,7 @@ import {
   upsertConsumiveis,
   upsertConversionSuggestions,
   upsertDepositos,
+  upsertDivergences,
   upsertInventoryItems,
   upsertPpeItems,
   upsertRequests,
@@ -260,6 +262,19 @@ export async function enviarDocumentosPendentes(
 }
 
 /**
+ * Fase 19: espelha as divergências do depósito (pendências de reposição e
+ * saldo negativo) no IndexedDB — todos os dispositivos do depósito veem as
+ * mesmas pendências criadas em outros aparelhos.
+ */
+export async function espelharDivergencias(api: ApiClient, depositoId: string): Promise<void> {
+  const res = await api.request<{ divergencias: DivergenceRow[] }>(
+    'GET',
+    `/deposits/${depositoId}/divergences`,
+  );
+  await upsertDivergences(res.divergencias);
+}
+
+/**
  * Fase 02: espelha os depósitos autorizados no IndexedDB.
  * A sync completa (push+fila+conflitos) chega na fase 05.
  */
@@ -308,6 +323,7 @@ export async function espelharDepositos(params: {
       await espelharEnxoval(api, d.id);
       await espelharPecas(api, d.id);
       await espelharEstoque(api, d.id);
+      await espelharDivergencias(api, d.id);
       await espelharLogs(api, d.id);
     } catch {
       // Depósito sem enxoval publicado ainda — segue sem itens locais.

@@ -84,8 +84,9 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 ### Divergências
 | Método | Rota | Descrição |
 | ------ | ---- | --------- |
-| GET | `/deposits/:id/divergences` | abertas (dashboard) |
-| POST | `/deposits/:id/divergences/:d/resolve` | resolver (matrícula + motivo) |
+| GET | `/deposits/:id/divergences` | lista do depósito — `?status=` (ABERTA\|RESOLVIDA\|…), `?tipo=` (REPOSICAO\|SALDO_NEGATIVO\|CONFERENCIA), `?limit=` — inclui `descricao` via join no enxoval corrente, mais recentes primeiro. Puxada para o espelho local de todos os dispositivos do depósito (fase 19). |
+
+> **Fechamento de pendência REPOSICAO**: apenas pela entrada de material (`POST /goldbox/entrada`) ou pela correção da conferência. Resolução manual não faz parte da fase 19 (decisão de escopo).
 
 ### Docs
 | Método | Rota | Descrição |

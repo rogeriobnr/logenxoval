@@ -32,6 +32,17 @@
 | 12 | Espelhos e restauração | `feat(phase12): espelhos e restauração` | ✅ |
 | 13 | Testes multi-dispositivo + deploy (GitHub/Vercel/domínio) | `feat(phase13): testes e deploy` | ✅ |
 
+## Fases além do plano original
+
+| Fase | Escopo | Commit | Status |
+| ---- | ------ | ------ | ------ |
+| 14 | PIN por usuário + recuperação de senha | `feat(fase14): pin e recuperação de senha` | ✅ |
+| 15 | (consolidado na 16) | — | — |
+| 16 | Entrada de material (enxoval + consumível/EPI) com fila offline | `feat(fase16): entrada de material` | ✅ |
+| 17 | Reposição na baixa (`reposicao`) e pendência de baixa na conferência | `feat(fase17): reposição na baixa e pendência de baixa na conferência` | ✅ |
+| 18 | Solicitações simplificadas (RASCUNHO→ENVIADA→RECEBIDA) e telas dedicadas | `feat(fase18): fluxo de solicitações simplificado e telas dedicadas` | ✅ |
+| 19 | Fluxo de reposição completo: `GET /divergences` + espelho multi-dispositivo + card de reposições pendentes no dashboard | `feat(fase19): fluxo de reposição e lista de divergências` | ✅ |
+
 ## Critério de aceite de cada fase
 
 A **regra de ouro**: *toda movimentação de estoque possui depósito, usuário (matrícula), data/hora, quantidade e registro de auditoria.* Fase não avança sem isso testado.

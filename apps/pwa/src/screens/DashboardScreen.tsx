@@ -4,8 +4,9 @@ import { Alert, Btn } from '../components/ui';
 import { SyncModal } from '../components/SyncModal';
 import { statusSync } from '../lib/status';
 import { onSync } from '../lib/events';
-import { getPendenciasLocais, getSyncState } from '../repos/local';
+import { getPendenciasLocais, getSyncState, listDivergenciasAbertas, listInventoryItemsLocal } from '../repos/local';
 import { navigate } from '../router';
+import type { DivergenceRow } from '@logenxoval/contracts';
 
 const MENU: Array<{ label: string; route: string }> = [
   { label: 'Enxoval', route: '/enxoval' },
@@ -43,6 +44,8 @@ function tempoRelativo(iso: string | null): string {
 export function DashboardScreen() {
   const { session, online, deviceId } = useAuth();
   const [pendencias, setPendencias] = useState({ fila: 0, divergencias: 0, negativos: 0, errosFila: 0, sugestoesPendentes: 0 });
+  const [reposicoes, setReposicoes] = useState<DivergenceRow[]>([]);
+  const [descricoes, setDescricoes] = useState<Record<string, string>>({});
   const [ultimaSync, setUltimaSync] = useState<string | null>(null);
   const [erroSync, setErroSync] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -53,6 +56,17 @@ export function DashboardScreen() {
     if (depositoId) {
       const st = await getSyncState(deviceId, depositoId);
       setUltimaSync(st?.lastSyncAt ?? null);
+      const [abertas, itens] = await Promise.all([
+        listDivergenciasAbertas(depositoId),
+        listInventoryItemsLocal(depositoId),
+      ]);
+      setReposicoes(abertas.filter((d) => d.tipo === 'REPOSICAO'));
+      setDescricoes(
+        Object.fromEntries(itens.map((i) => [i.codigoSap, i.textoBreve])),
+      );
+    } else {
+      setReposicoes([]);
+      setDescricoes({});
     }
   }, [session?.depositoAtivo?.id, deviceId]);
 
@@ -120,6 +134,34 @@ export function DashboardScreen() {
           <div className="list-item">
             <span className="list-title">Erros na fila de sincronização</span>
             <span className="list-title warn">{pendencias.errosFila}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginBottom: '1rem' }}>
+        <div className="list-item" style={{ borderBottom: 'none' }}>
+          <span className="list-title">Reposições pendentes</span>
+          <span>{reposicoes.length}</span>
+        </div>
+        {reposicoes.length === 0 && (
+          <div className="list-item" style={{ borderBottom: 'none' }}>
+            <span className="list-sub">Nenhuma pendência de reposição.</span>
+          </div>
+        )}
+        {reposicoes.map((d) => (
+          <div className="list-item" key={d.id}>
+            <div>
+              <div className="list-title">{d.codigoSap}</div>
+              <div className="list-sub">{descricoes[d.codigoSap] ?? d.descricao ?? 'Item sem descrição'}</div>
+            </div>
+            <span className="list-sub warn">faltam {d.quantidade}</span>
+          </div>
+        ))}
+        {reposicoes.length > 0 && (
+          <div style={{ padding: '0 1rem 1rem' }}>
+            <Btn variant="secondary" className="small" onClick={() => navigate('/goldbox')}>
+              Registrar entrada no Goldbox
+            </Btn>
           </div>
         )}
       </div>

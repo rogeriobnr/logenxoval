@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import {
   DEPOSITO_STATUS,
+  DIVERGENCIA_STATUS,
+  DIVERGENCIA_TIPO,
   ITEM_STATUS,
   LOG_TIPO,
   ORIGEM_SPARE_PART,
@@ -230,6 +232,15 @@ export const logsQuerySchema = z.object({
 });
 
 export type LogsQuery = z.infer<typeof logsQuerySchema>;
+
+/** Filtros de consulta de divergências do depósito (docs 19). */
+export const divergenceQuerySchema = z.object({
+  status: z.enum(Object.values(DIVERGENCIA_STATUS) as [string, ...string[]]).optional(),
+  tipo: z.enum(Object.values(DIVERGENCIA_TIPO) as [string, ...string[]]).optional(),
+  limit: z.coerce.number().int().min(1).max(2000).optional(),
+});
+
+export type DivergenceQuery = z.infer<typeof divergenceQuerySchema>;
 
 /** Payload de uma baixa enviada pela fila offline (docs 8/11). */
 export const syncPayloadBaixaSchema = baixaBodySchema.omit({ operationId: true }).extend({
