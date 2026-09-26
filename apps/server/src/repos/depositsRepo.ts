@@ -102,6 +102,36 @@ export async function grantDepositAccess(params: {
   );
 }
 
+export async function revokeDepositAccess(params: {
+  userId: string;
+  depositoId: string;
+  revogadoPor: string;
+}): Promise<void> {
+  const pool = getPool();
+  await pool.query('DELETE FROM user_deposits WHERE user_id = $1 AND deposito_id = $2', [
+    params.userId,
+    params.depositoId,
+  ]);
+}
+
+export async function listDepositsGrantedToUser(userId: string): Promise<string[]> {
+  const pool = getPool();
+  const { rows } = await pool.query('SELECT deposito_id FROM user_deposits WHERE user_id = $1', [userId]);
+  return rows.map((r) => r.deposito_id as string);
+}
+
+export async function listUserDepositGrants(): Promise<Array<{ userId: string; depositoIds: string[] }>> {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT user_id, array_agg(deposito_id ORDER BY deposito_id) AS deposito_ids
+     FROM user_deposits GROUP BY user_id`,
+  );
+  return rows.map((r) => ({
+    userId: r.user_id as string,
+    depositoIds: (r.deposito_ids as string[]) ?? [],
+  }));
+}
+
 export async function updateDepositMeta(params: {
   id: string;
   nome: string;

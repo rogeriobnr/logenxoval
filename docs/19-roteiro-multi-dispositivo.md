@@ -23,14 +23,17 @@ Dispositivo B = notebook. Duração estimada: 45–75 min.
    - Líder: matrícula `LID-1001`, nome "Líder A", perfil **LÍDER**.
    - Mecânico 1: matrícula `MEC-1002`, perfil **MECÂNICO**.
    - Mecânico 2: matrícula `MEC-1003`, perfil **MECÂNICO**.
-6. **Criar itens**: no A, tela **Enxoval** → "Importar nova versão" → cole 3 linhas
+6. **Designar depósito** (tela **Usuários** → expandir cada usuário → "Designar depósitos"):
+   marque **Galpão A** para `LID-1001`, `MEC-1002` e `MEC-1003` (o admin `ADMIN-001` já
+   tem acesso a todos). Sem essa concessão, o usuário não vê o depósito nem consegue baixar (403).
+7. **Criar itens**: no A, tela **Enxoval** → "Importar nova versão" → cole 3 linhas
    `codigoSap|textoBreve|qtdOficial|unidade` e publique:
    ```
    1002341|Camiseta Básica|20|UN
    1002342|Calça Sarja|15|UN
    1002343|Botina Couro|6|PAR
    ```
-7. **Login nos dois aparelhos**: A e B com `MEC-1002`. Confira em **Logs** que o login
+8. **Login nos dois aparelhos**: A e B com `MEC-1002`. Confira em **Logs** que o login
    de cada aparelho ficou registrado.
 
 ---
@@ -40,8 +43,13 @@ Dispositivo B = notebook. Duração estimada: 45–75 min.
 - [x] (preparo) Primeiro acesso **online** nos dois aparelhos.
 - [ ] **Login offline**: no A, ative modo avião → feche e reabra o app → login com `MEC-1002`
   deve funcionar (aviso "Autenticação offline é limitada a este dispositivo" é esperado).
-- [ ] **Negativo**: com o avião ligado, tente logar com um manual qualquer (ex.: `MEC-0000`)
-  → deve **falhar** (sem espelho local válido).
+  A sessão ativa também é restaurada sozinha, mesmo havendo mais de um usuário salvo no aparelho.
+- [ ] **Negativo**: com o avião ligado, tente logar com uma matrícula que **nunca** logou
+  online neste aparelho (ex.: `MEC-0000`) → deve **falhar** com "nunca autenticou online
+  neste aparelho".
+- [ ] **Troca de usuário offline**: ainda sem conexão, faça logout do `MEC-1002` e entre com
+  outro usuário que já logou neste aparelho (ex.: `MEC-1003`) → deve funcionar; o logout
+  **não apaga** a credencial, só encerra a sessão.
 - [ ] **Isolamento**: com `MEC-1002` (depósito 1001) no A, a tela **Depósitos** deve listar
   apenas **Galpão A**. No admin (`ADMIN-001`), a mesma tela lista todos os depósitos.
 - [ ] Marque as caixas §1 no `docs/18`.
@@ -54,6 +62,9 @@ Dispositivo B = notebook. Duração estimada: 45–75 min.
 
 No A (`MEC-1002`, online):
 - [ ] **Goldbox** → baixa `1002341` qtd **3** (Paris, olhar "Baixa").
+- [ ] **UX do saldo**: ao digitar a quantidade, o app mostra "Disponível: 20 · Após a baixa: 17"
+  para o item selecionado. Digite qtd **30** e confira o aviso de **negativação**; volte para
+  **3** (o aviso some) e registre.
 - [ ] No B: **Dashboard** → "Sincronizar agora" → **Enxoval/Estoque** → o saldo de `1002341`
   passou de 20 para 17.
 - [ ] **Auditoria**: **Logs** no B mostra a baixa com matrícula `MEC-1002`, data/hora,
@@ -96,14 +107,36 @@ Use um item de saldo baixo (`1002343`, saldo 6):
 
 ## Bloco 5 — Erro de servidor / backoff (`docs/18` §5)
 
-- [ ] No A, deixe 2 baixas **pendentes** (modo avião).
-- [ ] **Pause o banco Neon** (Neon console → projeto → *Pause*), deixe ~1 min.
-- [ ] Religue o A e sincronize → a fila deve **não se perder**: Dashboard mostra "Erros na
-   fila de sincronização" e o retry em backoff (não travou nem descartou).
-- [ ] **Resume** o Neon e aguarde o retry automático (ou "Sincronizar agora") → fila zera,
-   saldos batem com o B.
-- [ ] Alternativa sem pausar Neon: desligue o Wi-Fi do celular no meio do sync (pull ainda
-   em vôo) e verifique que a operação não sumiu após religar.
+Objetivo: simular uma falha do servidor e confirmar que as operações da fila **não se perdem**.
+
+**Preparo (no A):**
+- [ ] Entre com `MEC-1002`, abra o **Goldbox** e registre **2 baixas** (ex.: `1002341` qtd 2
+  e `1002342` qtd 3) com o **modo avião ligado**. Cada uma mostra "Baixa registrada no
+  dispositivo (offline)".
+
+**Opção A — pausar o banco Neon (mais fiel):**
+1. No **computador**, abra o [Neon Console](https://console.neon.tech) → projeto usado na
+   `DATABASE_URL` (ver `docs/17`) → menu **Settings** → seção **Pause & Resume** → botão
+   **Pause project**. Espere a confirmação.
+2. No A, **desligue o modo avião** e abra o app. Toque **Sincronizar agora**.
+3. Verifique que a fila **não perdeu** nada: no **Dashboard**, as 2 pendências continuam lá,
+   com status de erro/retry ("Erros na fila de sincronização") e o **backoff** aguardando
+   (~30s, 1min…). Nenhuma operação foi descartada.
+4. Volte ao Neon → **Resume project**. Atenção: o banco leva **dezenas de segundos para
+   reativar**; se o app ainda mostrar erro, aguarde 1–2 min e toque **Sincronizar agora** de novo.
+5. A fila zera e os saldos batem com o B.
+
+**Opção B — sem mexer no Neon (rede do celular):**
+1. Deixe as **2 baixas pendentes** (modo avião) no A.
+2. Desligue o modo avião e toque **Sincronizar agora** e, **em seguida**, apague a rede do
+   celular (Wi-Fi) *no meio* da sincronização — o envio falhará no meio do vôo.
+3. Aguarde ~30s com o app aberto e observe o **backoff**; as operações continuam na fila
+   (Dashboard mostra erro de sincronização, sem descartar).
+4. Religue o Wi-Fi e toque **Sincronizar agora** → fila zera, saldos + logs conferem com o B
+   (uma movimentação por baixa, mesmo com o envio tendo falhado no meio).
+
+**Em qualquer opção:**
+- [ ] A fila permaneceu íntegra; ao sincronizar com sucesso, **não há duplicação** em **Logs**.
 - [ ] Marque `docs/18` §5.
 
 > [NOTA] _________________________________________________________________
@@ -113,6 +146,9 @@ Use um item de saldo baixo (`1002343`, saldo 6):
 ## Bloco 6 — Backup/restauração (`docs/18` §6)
 
 - [ ] No B: **Configurações** → "Backup do dispositivo" → defina uma senha → **Exportar .lxb**.
+  No navegador pode aparecer a **caixa de diálogo nativa** para escolher onde salvar; em aparelhos
+  que só baixam, confira a **barra de notificações / pasta Downloads**. Use **Compartilhar arquivo**
+  se quiser enviar direto para o A via WhatsApp/e-mail.
 - [ ] Transfira o `.lxb` para o A (cloud/USB/cabo).
 - [ ] No A: **Configurações** → **Importar backup** → informe a senha do backup.
 - [ ] Sincronize o A → saldos e fila voltam **sem duplicação** (operationIds preservados).
@@ -128,8 +164,11 @@ Use um item de saldo baixo (`1002343`, saldo 6):
 
 ## Bloco 7 — OCR/documentos (`docs/18` §7)
 
-- [ ] No B: tela **Revisão OCR** → envie 1 foto (JPEG/PNG/WebP) ou PDF com 1–2 itens
-  (textar com o texto `1002341` bem visível), máx. 20 MB.
+- [ ] No B: tela **Atualizar enxoval por foto/PDF** → envie 1 foto (JPEG/PNG/WebP) ou PDF com
+  1–2 itens (testar com o texto `1002341` bem visível), máx. 5 MB na rota de IA.
+- [ ] **Online**, o reconhecimento usa IA (Google Gemini) se configurada (ver `docs/17`,
+  var `GEMINI_API_KEY`); sem a chave, o app cai **sozinho** para o reconhecimento local
+  (Tesseract) e avisa qual caminho usou.
 - [ ] Confira as linhas extraídas, corrija se preciso, e publique.
 - [ ] **Documento salvo** (na tela de documentos/enxoval) e **nova versão** do enxoval publicada;
   saldo do item reconhecido refletido nos dois aparelhos.

@@ -14,7 +14,9 @@ export type ErrorCode =
   | 'ITEM_INDISPONIVEL'
   | 'INCOMPATIVEL'
   | 'SALDO_CONFLITO'
-  | 'CONFIG_INVALIDA';
+  | 'CONFIG_INVALIDA'
+  | 'IA_NAO_CONFIGURADA'
+  | 'IA_FALHOU';
 
 export class AppError extends Error {
   constructor(

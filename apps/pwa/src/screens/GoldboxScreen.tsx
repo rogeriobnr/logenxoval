@@ -3,6 +3,7 @@ import type { GoldboxMovementRow, InventoryItemRow } from '@logenxoval/contracts
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
 import { assinarMatricula } from '../lib/assinatura';
+import { analisarBaixa } from '../lib/goldbox';
 import { listInventoryItemsLocal, listMovimentosLocais, registrarBaixaOffline } from '../repos/local';
 import { espelharEnxoval } from '../services/sync';
 
@@ -83,6 +84,14 @@ export function GoldboxScreen() {
     setBusca('');
     setMsg(null);
   };
+
+  const itemAtivo = useMemo(() => {
+    const sap = codigoSap.trim().toLowerCase();
+    if (!sap) return null;
+    return itens.find((i) => i.codigoSap.trim().toLowerCase() === sap) ?? null;
+  }, [itens, codigoSap]);
+
+  const analise = analisarBaixa(itemAtivo, quantidade);
 
   const registrarBaixa = async (e: FormEvent) => {
     e.preventDefault();
@@ -267,6 +276,37 @@ export function GoldboxScreen() {
             <Field id="gold-sap" label="Código SAP" value={codigoSap} onChange={(e) => setCodigoSap(e.target.value)} required placeholder="1002341" />
             <Field id="gold-desc" label="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Opcional" />
             <Field id="gold-qtd" label="Quantidade" type="number" min="0" step="any" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} required />
+
+            {analise.status === 'item' && (
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '0.4rem',
+                  flexWrap: 'wrap',
+                  marginTop: '0.4rem',
+                  padding: '0.4rem 0.6rem',
+                  border: '1px solid var(--line)',
+                  borderRadius: '8px',
+                }}
+              >
+                <span className="list-sub">
+                  Disponível: <b>{analise.disponivel}</b> {itemAtivo?.unidadeMedida ?? ''} · oficial:{' '}
+                  {itemAtivo?.qtdOficial} {itemAtivo?.unidadeMedida ?? ''}
+                </span>
+                {analise.validada && (
+                  <span className="list-sub">
+                    Após a baixa: <b>{analise.aposBaixa}</b>
+                  </span>
+                )}
+                {analise.vaiNegativar && (
+                  <span className="list-title warn" role="alert">
+                    ⚠ A baixa de {quantidade} deixa o saldo negativo ({analise.aposBaixa}). Confira se é intencional —
+                    divergência será sinalizada na sincronização.
+                  </span>
+                )}
+              </div>
+            )}
+
             <label className="list-sub" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <input type="checkbox" checked={reposicao} onChange={(e) => setReposicao(e.target.checked)} />
               É reposição

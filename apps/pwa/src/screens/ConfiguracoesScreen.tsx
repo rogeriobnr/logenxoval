@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { Alert, Btn, Field } from '../components/ui';
 import { exportarBackupLocal, importarBackupLocal, EXTENSAO_BACKUP } from '../lib/backup';
-import { baixarArquivo } from '../lib/exportar';
+import { compartilharArquivo, podeCompartilharArquivos, salvarComDialogoOuDownload } from '../lib/exportar';
 import { ApiError, isNetworkError } from '../lib/api';
 import { listarSnapshots, restaurarSnapshotV12, type SnapshotListado } from '../services/sync';
 
@@ -20,6 +20,8 @@ export function ConfiguracoesScreen() {
   const [senhaBackup, setSenhaBackup] = useState('');
   const [msgBackup, setMsgBackup] = useState<{ kind: 'info' | 'error'; texto: string } | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [backupFeito, setBackupFeito] = useState<{ nome: string; metodo: 'salvo' | 'download'; blob: Blob; senha: string } | null>(null);
+  const [compartilhando, setCompartilhando] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Snapshots do servidor
@@ -54,6 +56,7 @@ export function ConfiguracoesScreen() {
 
   async function exportar() {
     setMsgBackup(null);
+    setBackupFeito(null);
     if (!senhaBackup) {
       setMsgBackup({ kind: 'error', texto: 'Informe uma senha para o arquivo de backup.' });
       return;
@@ -62,13 +65,26 @@ export function ConfiguracoesScreen() {
     try {
       const blob = await exportarBackupLocal(senhaBackup);
       const nome = `logenxoval-backup-${new Date().toISOString().slice(0, 10)}${EXTENSAO_BACKUP}`;
-      baixarArquivo(blob, nome, 'application/octet-stream');
-      setMsgBackup({ kind: 'info', texto: `Backup gerado (${nome}). Guarde o arquivo e a senha fora do aparelho.` });
+      const metodo = await salvarComDialogoOuDownload(blob, nome, 'application/octet-stream');
+      if (metodo === 'cancelado') {
+        setMsgBackup({ kind: 'error', texto: 'Exportação cancelada — nenhum arquivo foi salvo.' });
+        return;
+      }
+      setBackupFeito({ nome, metodo, blob, senha: senhaBackup });
+      setSenhaBackup('');
     } catch (err) {
       setMsgBackup({ kind: 'error', texto: err instanceof Error ? err.message : 'Falha ao gerar o backup.' });
     } finally {
       setBackupBusy(false);
     }
+  }
+
+  async function compartilharBackup() {
+    if (!backupFeito) return;
+    setCompartilhando(true);
+    const ok = await compartilharArquivo(backupFeito.blob, backupFeito.nome);
+    setCompartilhando(false);
+    if (!ok) setMsgBackup({ kind: 'error', texto: 'Compartilhamento indisponível — transfira o arquivo por outro meio (WhatsApp, e-mail, pen drive).' });
   }
 
   async function importarDeArquivo(file: File) {
@@ -177,6 +193,31 @@ export function ConfiguracoesScreen() {
         {msgBackup && (
           <div className="list-item" style={{ borderBottom: 'none' }}>
             <Alert kind={msgBackup.kind}>{msgBackup.texto}</Alert>
+          </div>
+        )}
+
+        {backupFeito && (
+          <div className="card" style={{ marginTop: '0.8rem', border: '1px solid var(--line)', borderRadius: '8px', padding: '0.8rem' }}>
+            <div className="list-title ok">Backup pronto: {backupFeito.nome}</div>
+            <div className="list-sub" style={{ marginTop: '0.4rem' }}>
+              {backupFeito.metodo === 'salvo'
+                ? `Arquivo salvo no local que você escolheu. Se preferir enviar para outro aparelho agora, use o botão abaixo.`
+                : `Download iniciado. Confira a barra de notificações (celular) ou a pasta Downloads (computador).`}
+            </div>
+            <div className="list-sub" style={{ marginTop: '0.4rem' }}>
+              Para usar no outro aparelho: transfira o .lxb (WhatsApp, e-mail, pen drive ou pelo botão Compartilhar) e lá
+              importe usando a <b>mesma senha do backup</b>.
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.6rem' }}>
+              {podeCompartilharArquivos() && (
+                <Btn variant="secondary" className="small" disabled={compartilhando} onClick={() => void compartilharBackup()}>
+                  {compartilhando ? 'Compartilhando…' : 'Compartilhar arquivo'}
+                </Btn>
+              )}
+              <Btn variant="ghost" className="small" onClick={() => setBackupFeito(null)}>
+                Fechar
+              </Btn>
+            </div>
           </div>
         )}
       </div>

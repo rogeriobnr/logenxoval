@@ -184,3 +184,30 @@ export function tamanhoDeDocumento(file: File): { tamanho: number; mime: string;
   const tipo = file.type === 'application/pdf' ? 'PDF' : 'FOTO';
   return { tamanho: file.size, mime, tipo };
 }
+
+export interface ApiLike {
+  request<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T>;
+}
+
+/** Converte o arquivo para base64 (sem o prefixo data:) para enviar ao servidor. */
+export async function arquivoParaBase64(file: File | Blob): Promise<string> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Falha ao ler o arquivo.'));
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.readAsDataURL(file);
+  });
+  const idx = dataUrl.indexOf(',');
+  return idx === -1 ? dataUrl : dataUrl.slice(idx + 1);
+}
+
+/**
+ * Reconhece a folha via Google Gemini (rota do servidor `POST /ocr/ai`).
+ * Exige conexão. Usado em vez do Tesseract quando online e disponível.
+ */
+export async function reconhecerComIa(file: File | Blob, depositoId: string, api: ApiLike): Promise<string> {
+  const base64 = await arquivoParaBase64(file);
+  const mime = file.type || 'application/octet-stream';
+  const res = await api.request<{ texto: string }>('POST', '/ocr/ai', { depositoId, base64, mime });
+  return res.texto;
+}

@@ -53,12 +53,31 @@ export interface SessionRecord {
 }
 
 /**
+ * Credencial offline por matrícula (docs 3.2 multi-dispositivo).
+ * Cada matrícula que já autenticou online neste aparelho fica habilitada
+ * para login offline, mesmo após logout/troca de usuário. Não entra no .lxb.
+ */
+export interface OfflineCredRecord {
+  userId: string;
+  matricula: string;
+  nomeCompleto: string;
+  perfil: string;
+  depositos: DepositoInfo[];
+  saltLocal: string;
+  hashLocal: string;
+  accessToken?: string;
+  refreshToken?: string;
+  atualizadoEm: string;
+}
+
+/**
  * Espelho local (IndexedDB) — documents a fase 02 exige armazenar
  * o mesmo conjunto de entidades do servidor, isoladas por depositoId.
  */
 class LogEnxovalDb extends Dexie {
   kv!: Table<KvRecord, string>;
   session!: Table<SessionRecord, string>;
+  offlineCreds!: Table<OfflineCredRecord, string>;
   users!: Table<UserRow, string>;
   deposits!: Table<DepositoRow, string>;
   depositVersions!: Table<DepositVersionRow, string>;
@@ -142,6 +161,34 @@ class LogEnxovalDb extends Dexie {
       settings: '[chave+depositoId]',
       syncState: '[deviceId+depositoId], status',
     });
+    this.version(4).stores({
+      kv: 'key',
+      session: 'userId',
+      offlineCreds: 'matricula',
+      users: 'id, matricula, perfil, status',
+      deposits: 'id, numero, status',
+      depositVersions: 'id, depositoId, versao, status',
+      inventoryItems: 'id, [depositoId+codigoSap], depositoId, codigoSap, versao, status, atualizadoEm',
+      goldboxMovements: 'id, operationId, depositoId, codigoSap, dataHora, matricula, statusSync',
+      spareParts: 'id, [depositoId+codigoSap], depositoId, codigoSap, status',
+      sparePartMovements: 'id, operationId, sparePartId, depositoId',
+      consumables: 'id, [depositoId+codigo], depositoId, codigo',
+      consumableMovements: 'id, operationId, consumableId, depositoId',
+      ppeItems: 'id, [depositoId+codigo], depositoId, codigo',
+      ppeMovements: 'id, operationId, ppeItemId, depositoId',
+      requests: 'id, depositoId, tipo, solicitanteId, matricula, status, dataEm',
+      inspections: 'id, depositoId, status, dataEm',
+      inspectionItems: 'id, inspectionId, codigoSap, status',
+      conversionSuggestions: 'id, depositoId, status',
+      divergences: 'id, depositoId, status, criadoEm',
+      auditLogs: 'id, depositoId, tipo, dataHora',
+      snapshots: 'id, depositoId, dataEm',
+      documents: 'id, depositoId',
+      syncQueue: 'id, operationId, entidade, acao, status, criadoEm, proximaTentativaEm',
+      processedOperations: 'operationId',
+      settings: '[chave+depositoId]',
+      syncState: '[deviceId+depositoId], status',
+    });
   }
 }
 
@@ -162,5 +209,7 @@ export const SESSION_KEY = 'session:ativa';
 export const DEVICE_KEY = 'deviceId';
 
 export async function getStoredSession(): Promise<SessionRecord | undefined> {
-  return db.session.get(SESSION_KEY);
+  const todas = await db.session.toArray();
+  if (todas.length === 0) return undefined;
+  return todas.reduce((a, b) => (b.loginEm > a.loginEm ? b : a));
 }

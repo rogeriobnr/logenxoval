@@ -180,6 +180,69 @@ export function baixarArquivo(data: BlobPart, nome: string, tipo: string): void 
   URL.revokeObjectURL(url);
 }
 
+interface SaveFilePickerOptions {
+  suggestedName?: string;
+  types?: Array<{ description?: string; accept: Record<string, string[]> }>;
+}
+
+interface FileSystemWritable {
+  write(data: Blob): Promise<void>;
+  close(): Promise<void>;
+}
+
+interface SaveFileHandle {
+  createWritable(): Promise<FileSystemWritable>;
+}
+
+type ArquivoSalvo = 'salvo' | 'download' | 'cancelado';
+
+export function temDialogoDeArquivos(): boolean {
+  return typeof window !== 'undefined' && typeof (window as unknown as { showSaveFilePicker?: unknown }).showSaveFilePicker === 'function';
+}
+
+export function podeCompartilharArquivos(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.share === 'function' && typeof navigator.canShare === 'function';
+}
+
+/**
+ * Salva com caixa de diálogo nativa (File System Access API) quando disponível;
+ * senão baixa direto. Devolve como o arquivo foi entregue ao usuário.
+ */
+export async function salvarComDialogoOuDownload(blob: Blob, nome: string, tipo: string): Promise<ArquivoSalvo> {
+  if (temDialogoDeArquivos()) {
+    try {
+      const ext = nome.includes('.') ? nome.slice(nome.lastIndexOf('.') + 1).toLowerCase() : 'lxb';
+      const picker = (window as unknown as { showSaveFilePicker: (o?: SaveFilePickerOptions) => Promise<SaveFileHandle> }).showSaveFilePicker;
+      const handle = await picker({
+        suggestedName: nome,
+        types: [{ description: 'Backup LogEnxoval', accept: { [tipo]: [`.${ext}`] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return 'salvo';
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return 'cancelado';
+      // falha do seletor → cai no download simples
+    }
+  }
+  baixarArquivo(blob, nome, tipo);
+  return 'download';
+}
+
+/** Compartilha o arquivo pelo sistema (Web Share API). Retorna false se indisponível/cancelado. */
+export async function compartilharArquivo(blob: Blob, nome: string): Promise<boolean> {
+  if (!podeCompartilharArquivos() || typeof File === 'undefined') return false;
+  try {
+    const arquivo = new File([blob], nome, { type: blob.type });
+    if (!navigator.canShare({ files: [arquivo] })) return false;
+    await navigator.share({ files: [arquivo] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function baixarPdf(tab: RelatorioTabela, nome: string): void {
   const doc = gerarPdf(tab);
   doc.save(nome);

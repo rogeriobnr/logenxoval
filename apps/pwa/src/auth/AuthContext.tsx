@@ -1,10 +1,14 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ApiClient, ApiError, isNetworkError, type ApiTokens } from '../lib/api';
 import { generateDeviceId } from '../lib/device';
-import { deriveLocalVerifier, verifierIgual } from '../lib/crypto';
+import { deriveLocalVerifier } from '../lib/crypto';
+import {
+  autenticarOffline,
+  atualizarHashCredencialOffline,
+  gravarCredencialOffline,
+} from '../lib/offlineAuth';
 import {
   DEVICE_KEY,
-  SESSION_KEY,
   db,
   kvGet,
   kvSet,
@@ -87,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearSession = async () => {
     tokensRef.current = undefined;
-    await db.session.delete(SESSION_KEY);
+    await db.session.clear();
     setSession(null);
     setStatus('anon');
   };
@@ -139,8 +143,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setSession(mapSession(stored));
             setStatus('auth');
           }
+          await gravarCredencialOffline({
+            userId: stored.userId,
+            matricula: stored.matricula,
+            nomeCompleto: stored.nomeCompleto,
+            perfil: stored.perfil,
+            depositos: stored.depositos,
+            saltLocal: stored.saltLocal,
+            hashLocal: stored.hashLocal,
+            accessToken: stored.accessToken,
+            refreshToken: stored.refreshToken,
+          });
         } else if (stored) {
-          await db.session.delete(SESSION_KEY);
+          await db.session.clear();
           if (!cancelled) setStatus('anon');
         } else if (!cancelled) {
           setStatus('anon');
@@ -155,30 +170,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const offlineLogin = async (matricula: string, senha: string): Promise<LoginResult> => {
-    const stored = await getStoredSession();
-    if (!stored) {
-      return {
-        ok: false,
-        code: 'OFFLINE_INDISPONIVEL',
-        message: 'Primeira autenticação exige conexão com o servidor.',
-      };
+    const res = await autenticarOffline(matricula, senha);
+    if (!res.ok) {
+      return { ok: false, code: res.code, message: res.message };
     }
-    if (isExpired(stored)) {
-      await db.session.delete(SESSION_KEY);
-      setStatus('anon');
-      return { ok: false, code: 'SESSAO_EXPIRADA', message: 'Sessão local expirada. Conecte-se para reautenticar.' };
-    }
-    if (stored.matricula !== matricula.trim()) {
-      return { ok: false, code: 'UNAUTHORIZED', message: 'Matrícula ou senha inválidos' };
-    }
-    const hash = await deriveLocalVerifier(senha, stored.saltLocal);
-    if (!verifierIgual(stored.hashLocal, hash)) {
-      return { ok: false, code: 'UNAUTHORIZED', message: 'Matrícula ou senha inválidos' };
-    }
-    stored.lastActivityAt = nowIso();
-    await db.session.put(stored);
-    tokensRef.current = { access: stored.accessToken ?? '', refresh: stored.refreshToken ?? '' };
-    setSession(mapSession(stored));
+    tokensRef.current = {
+      access: res.session.accessToken ?? '',
+      refresh: res.session.refreshToken ?? '',
+    };
+    setSession(mapSession(res.session));
     setStatus('auth');
     return { ok: true };
   };
@@ -212,6 +212,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           lastActivityAt: nowIso(),
         };
         await db.session.put(rec);
+        await gravarCredencialOffline({
+          userId: rec.userId,
+          matricula: rec.matricula,
+          nomeCompleto: rec.nomeCompleto,
+          perfil: rec.perfil,
+          depositos: rec.depositos,
+          saltLocal: rec.saltLocal,
+          hashLocal: rec.hashLocal,
+          accessToken: rec.accessToken,
+          refreshToken: rec.refreshToken,
+        });
         tokensRef.current = { access: res.accessToken, refresh: res.refreshToken };
         setSession(mapSession(rec));
         setStatus('auth');
@@ -256,6 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (stored) {
         stored.hashLocal = await deriveLocalVerifier(novaSenha, stored.saltLocal);
         await db.session.put(stored);
+        await atualizarHashCredencialOffline(stored.matricula, stored.hashLocal);
       }
       return { ok: true };
     } catch (err) {

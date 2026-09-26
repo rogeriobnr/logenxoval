@@ -15,6 +15,7 @@ import { registerLogRoutes } from './routes/logs';
 import { registerDocumentRoutes } from './routes/documents';
 import { registerEstoqueRoutes } from './routes/estoque';
 import { registerSnapshotRoutes } from './routes/snapshots';
+import { registerOcrRoutes } from './routes/ocr';
 
 export interface AppOptions {
   jwtSecret: string;
@@ -38,7 +39,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
         },
       });
     }
-    const { statusCode, body } = errorResponse(err as FastifyError);
+    const fastifyErr = err as FastifyError;
+    if (fastifyErr.code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
+      return reply.status(413).send({ error: { code: 'VALIDATION_FAILED', message: 'Corpo da requisição excede o limite' } });
+    }
+    const { statusCode, body } = errorResponse(fastifyErr);
     return reply.status(statusCode).send(body);
   });
 
@@ -60,6 +65,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await registerDocumentRoutes(app);
   await registerEstoqueRoutes(app);
   await registerSnapshotRoutes(app);
+  await registerOcrRoutes(app);
 
   return app;
 }

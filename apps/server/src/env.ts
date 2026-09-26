@@ -8,6 +8,7 @@ export interface Env {
   PORT: number;
   DATABASE_URL: string;
   JWT_SECRET: string;
+  GEMINI_API_KEY?: string;
 }
 
 export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
@@ -16,5 +17,6 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
     PORT: Number(source.PORT ?? 3000),
     DATABASE_URL: besoin(source.DATABASE_URL!, 'DATABASE_URL'),
     JWT_SECRET: besoin(source.JWT_SECRET!, 'JWT_SECRET'),
+    GEMINI_API_KEY: source.GEMINI_API_KEY,
   };
 }

@@ -26,8 +26,12 @@ A função recebe a URL original; o adaptador normaliza `req.url` (remove prefix
 | `SEED_ADMIN_MATRICULA` | ex. `ADMIN-001` | build |
 | `SEED_ADMIN_SENHA` | senha do primeiro admin | build |
 | `SEED_ADMIN_NOME` / `SEED_ADMIN_SOBRENOME` | opcionais | build |
+| `GEMINI_API_KEY` | chave da API Google Gemini (gerada em aistudio.google.com/apikey) — **opcional** | função |
 
 `vercel env add NOME VALOR production` para cada uma.
+
+Sem `GEMINI_API_KEY`, a rota `POST /ocr/ai` responde `501 IA_NAO_CONFIGURADA` e o PWA cai
+automaticamente para o reconhecimento local (Tesseract.js), com aviso no app.
 
 ## 17.3 Fluxo do deploy (CLI)
 

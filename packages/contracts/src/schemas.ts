@@ -59,6 +59,17 @@ export const updateUserBodySchema = z.object({
   perfil: z.enum([PERFIL.MECANICO, PERFIL.LIDER, PERFIL.ADMIN]).optional(),
 });
 
+export const grantUserDepositBodySchema = z.object({
+  depositoId: depositoIdSchema,
+  matriculaConfirmacao: matriculaSchema,
+  pin: z.string().optional(),
+});
+
+export const revokeUserDepositBodySchema = z.object({
+  matriculaConfirmacao: matriculaSchema,
+  pin: z.string().optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Depósitos
 // ---------------------------------------------------------------------------

@@ -7,11 +7,13 @@ import {
   extrairLinhas,
   itensParaPublicacao,
   OCR_CONFIANCA_LABEL,
+  reconhecerComIa,
   reconhecerDocumento,
   revisarLinhas,
   tamanhoDeDocumento,
   type ItemRevisao,
 } from '../lib/ocr';
+import { ApiError, isNetworkError } from '../lib/api';
 import { getEnxovalAtualLocal, registrarDocumentoOffline } from '../repos/local';
 import { espelharEnxoval } from '../services/sync';
 
@@ -91,26 +93,60 @@ export function OcrReviewScreen() {
     setArquivo(file);
     setPreview(URL.createObjectURL(file));
     setEtapa('captura');
-    void reconhecer(file);
+    if (navigator.onLine) {
+      void reconhecerViaIa(file);
+    } else {
+      void reconhecerLocal(file);
+    }
   };
 
-  const reconhecer = async (file: File) => {
+  const aplicarTexto = (texto: string) => {
+    const bruto = extrairLinhas(texto);
+    if (bruto.length === 0) {
+      setMsg({ kind: 'warn', text: 'Nenhum item reconhecido na folha. Ajuste o enquadramento e capture novamente.' });
+      return;
+    }
+    const revisao = revisarLinhas(bruto, itensAtuais);
+    setLinhas(revisao.linhas);
+    setEtapa('revisao');
+  };
+
+  const reconhecerLocal = async (file: File) => {
     setReconhecendo(true);
-    setMsg(null);
     try {
       const texto = await reconhecerDocumento(file);
-      const bruto = extrairLinhas(texto);
-      if (bruto.length === 0) {
-        setMsg({ kind: 'warn', text: 'Nenhum item reconhecido na folha. Ajuste o enquadramento e capture novamente.' });
-        return;
-      }
-      const revisao = revisarLinhas(bruto, itensAtuais);
-      setLinhas(revisao.linhas);
-      setEtapa('revisao');
+      aplicarTexto(texto);
+      setMsg((m) => ({ kind: 'info', text: `Reconhecimento local (no aparelho). ${m?.text ?? ''}` }));
     } catch (err) {
       setMsg({
         kind: 'error',
         text: err instanceof Error ? `Falha no OCR: ${err.message}` : 'Falha ao reconhecer a folha.',
+      });
+    } finally {
+      setReconhecendo(false);
+    }
+  };
+
+  const reconhecerViaIa = async (file: File) => {
+    setReconhecendo(true);
+    try {
+      const texto = await reconhecerComIa(file, depositoId, api);
+      aplicarTexto(texto);
+      setMsg({ kind: 'info', text: 'Itens reconhecidos por IA (Google Gemini). Confira e edite se necessário.' });
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'IA_NAO_CONFIGURADA') {
+        setMsg({ kind: 'info', text: 'IA não configurada neste servidor — usando o reconhecimento local (no aparelho).' });
+        await reconhecerLocal(file);
+        return;
+      }
+      if (isNetworkError(err) || (err instanceof ApiError && (err.code === 'IA_FALHOU' || err.code === 'VALIDATION_FAILED'))) {
+        setMsg({ kind: 'info', text: 'IA indisponível — usando o reconhecimento local (no aparelho).' });
+        await reconhecerLocal(file);
+        return;
+      }
+      setMsg({
+        kind: 'error',
+        text: err instanceof Error ? `Falha no OCR por IA: ${err.message}` : 'Falha ao reconhecer a folha.',
       });
     } finally {
       setReconhecendo(false);
@@ -219,7 +255,8 @@ export function OcrReviewScreen() {
             <div>
               <div className="list-title">Atualizar enxoval por foto / PDF</div>
               <div className="list-sub">
-                {session.depositoAtivo.nome} · fotografe a folha — os itens são reconhecidos no próprio aparelho.
+                {session.depositoAtivo.nome} · fotografe a folha. Online, os itens são reconhecidos por IA (Google
+                Gemini); sem conexão, o reconhecimento roda no próprio aparelho.
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import type { FastifyInstance } from 'fastify';
 import type { Perfil } from '@logenxoval/contracts';
 import { AppError } from '../lib/errors';
 import { newId, newToken } from '../lib/crypto';
@@ -17,7 +18,13 @@ import {
   touchActivity,
   upsertSession,
 } from '../repos/sessionsRepo';
-import { listDepositsByUser } from '../repos/depositsRepo';
+import {
+  findDepositById,
+  grantDepositAccess,
+  listDepositsByUser,
+  listUserDepositGrants,
+  revokeDepositAccess,
+} from '../repos/depositsRepo';
 import { insertAuditLog } from '../repos/auditLogRepo';
 
 export const ACCESS_TTL_S = 15 * 60;
@@ -223,6 +230,96 @@ export async function adminUpdateUser(opts: {
 
 export async function adminListUsers(): Promise<ReturnType<typeof listUsers>> {
   return listUsers();
+}
+
+type UserRowBase = Awaited<ReturnType<typeof listUsers>>[number];
+
+export async function adminListUsersComDepositos(): Promise<
+  Array<UserRowBase & { depositoIds: string[] }>
+> {
+  const users = await listUsers();
+  const grants = await listUserDepositGrants();
+  const porUsuario = new Map(grants.map((g) => [g.userId, g.depositoIds]));
+  return users.map((u) => ({ ...u, depositoIds: porUsuario.get(u.id) ?? [] }));
+}
+
+type LogContext = { usuarioId: string; matricula: string; dispositivo: string };
+
+function requireNonNull<T>(v: T | null): T {
+  if (v === null) throw new AppError('NAO_ENCONTRADO', 'Registro não encontrado', 404);
+  return v;
+}
+
+export async function adminDesignarDeposito(opts: {
+  app: FastifyInstance;
+  alvoId: string;
+  depositoId: string;
+  matriculaConfirmacao: string;
+  pin?: string;
+  log: LogContext;
+}): Promise<void> {
+  if (opts.matriculaConfirmacao !== opts.log.matricula) {
+    throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
+  }
+  const { verificarPinSeConfigurado } = await import('../plugins/auth');
+  await verificarPinSeConfigurado(opts.pin, opts.app);
+
+  const alvo = requireNonNull(await findById(opts.alvoId));
+  const dep = requireNonNull(await findDepositById(opts.depositoId));
+
+  await grantDepositAccess({
+    userId: alvo.id,
+    depositoId: dep.id,
+    concedidoPor: opts.log.matricula,
+  });
+
+  await insertAuditLog({
+    tipo: 'DESIGNACAO_DEPOSITO',
+    usuarioId: opts.log.usuarioId,
+    matricula: opts.log.matricula,
+    depositoId: dep.id,
+    entidade: 'user_deposits',
+    operacaoId: dep.id,
+    estadoPosterior: { matricula: alvo.matricula, depositoId: dep.id, numero: dep.numero },
+    origem: 'ONLINE',
+    dispositivo: opts.log.dispositivo,
+  });
+}
+
+export async function adminRevogarDeposito(opts: {
+  app: FastifyInstance;
+  alvoId: string;
+  depositoId: string;
+  matriculaConfirmacao: string;
+  pin?: string;
+  log: LogContext;
+}): Promise<void> {
+  if (opts.matriculaConfirmacao !== opts.log.matricula) {
+    throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
+  }
+  const { verificarPinSeConfigurado } = await import('../plugins/auth');
+  await verificarPinSeConfigurado(opts.pin, opts.app);
+
+  const alvo = requireNonNull(await findById(opts.alvoId));
+  const dep = requireNonNull(await findDepositById(opts.depositoId));
+
+  await revokeDepositAccess({
+    userId: alvo.id,
+    depositoId: dep.id,
+    revogadoPor: opts.log.matricula,
+  });
+
+  await insertAuditLog({
+    tipo: 'REVOGACAO_DEPOSITO',
+    usuarioId: opts.log.usuarioId,
+    matricula: opts.log.matricula,
+    depositoId: dep.id,
+    entidade: 'user_deposits',
+    operacaoId: dep.id,
+    estadoPosterior: { matricula: alvo.matricula, depositoId: dep.id, numero: dep.numero },
+    origem: 'ONLINE',
+    dispositivo: opts.log.dispositivo,
+  });
 }
 
 export { newId };
