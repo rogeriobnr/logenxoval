@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { estoqueEntradaBodySchema, solicitacaoCreateBodySchema, solicitacaoTransitionBodySchema } from '@logenxoval/contracts';
+import { estoqueEntradaBodySchema, estoqueExcluirBodySchema, solicitacaoCreateBodySchema, solicitacaoTransitionBodySchema } from '@logenxoval/contracts';
 import { authenticate, requireAcao, requireDepositoAcesso } from '../plugins/auth';
 import { validateBody } from '../lib/validator';
 import { listarConsumiveis, listarMovimentosConsumivel, listarMovimentosPpe, listarPpeItems } from '../repos/estoqueRepo';
@@ -46,6 +46,43 @@ export async function registerEstoqueRoutes(app: FastifyInstance): Promise<void>
     );
     return { solicitacoes };
   });
+
+  app.post(
+    '/deposits/:depositoId/estoque/:tipo/:itemId/excluir',
+    {
+      preHandler: [requireAcao('EXCLUIR_ITEM_ESTOQUE'), requireDepositoAcesso()],
+      ...validateBody(estoqueExcluirBodySchema),
+    },
+    async (req, reply) => {
+      const body = req.body as typeof estoqueExcluirBodySchema._type;
+      const { depositoId, tipo, itemId } = req.params as { depositoId: string; tipo: string; itemId: string };
+      if (tipo !== 'CONSUMIVEL' && tipo !== 'EPI') {
+        reply.status(400).send({ error: { code: 'VALIDATION_FAILED', message: 'tipo deve ser CONSUMIVEL ou EPI' } });
+        return;
+      }
+      const res = await estoqueService.excluirItemEstoque(
+        {
+          app,
+          authUser: req.authUser!,
+          dispositivo: (req.headers['x-device-id'] as string) ?? 'api',
+          origem: 'ONLINE',
+        },
+        {
+          ...body,
+          depositoId,
+          tipo,
+          itemId,
+        },
+      );
+      return {
+        excluido: true,
+        itemId: res.itemId,
+        codigo: res.codigo,
+        movimentosExcluidos: res.movimentosExcluidos,
+        solicitacoesExcluidas: res.solicitacoesExcluidas,
+      };
+    },
+  );
 
   app.post(
     '/deposits/:depositoId/estoque/entrada',

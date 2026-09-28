@@ -1,4 +1,5 @@
 import {
+  DivergenceRow,
   InspectionItemRow,
   InspectionRow,
   InspectionItemStatus,
@@ -157,9 +158,15 @@ async function reposicoesPendentes(client: Client, depositoId: string, saps: str
   return set;
 }
 
+export interface ResumoDivergenciasCriadas {
+  reposicao: number;
+  conferencia: number;
+}
+
 export interface InspecaoCriada {
   inspecao: InspectionRow;
   itens: InspectionItemRow[];
+  divergencias: ResumoDivergenciasCriadas;
 }
 
 export async function criarConferencia(params: {
@@ -173,6 +180,8 @@ export async function criarConferencia(params: {
   assinaturaMatricula: string;
   origem: 'ONLINE' | 'OFFLINE';
   dispositivo: string;
+  /** Fase 20: ao registrar, a conferência já nasce CONCLUIDA e as divergências abrem na hora. */
+  concluir?: boolean;
 }): Promise<InspecaoCriada> {
   return withDepositoContext(params.depositoId, params.perfil, async (client) => {
     const dep = await contextoDeDeposito(client, params.depositoId);
@@ -243,8 +252,52 @@ export async function criarConferencia(params: {
       dispositivo: params.dispositivo,
     });
 
+    const divergencias: ResumoDivergenciasCriadas = { reposicao: 0, conferencia: 0 };
+    if (params.concluir) {
+      await client.query(
+        'UPDATE inspections SET status = $2, observacao = COALESCE($3, observacao) WHERE id = $1',
+        [inspecaoId, 'CONCLUIDA', params.observacao ?? null],
+      );
+      const divItens = await client.query(
+        `SELECT codigo_sap, qtd_fisica, qtd_sistema, diferenca
+         FROM inspection_items
+         WHERE inspection_id = $1 AND deposito_id = $2 AND diferenca <> 0`,
+        [inspecaoId, params.depositoId],
+      );
+      for (const item of rowsOf(divItens)) {
+        const codigoSap = item.codigo_sap as string;
+        const diferenca = Number(item.diferenca);
+        const falta = diferenca < 0;
+        const tipo: DivergenceRow['tipo'] = falta ? 'REPOSICAO' : 'CONFERENCIA';
+        const quantidade = falta ? -diferenca : diferenca;
+        const dup = await client.query(
+          `SELECT 1 FROM divergences WHERE deposito_id = $1 AND codigo_sap = $2 AND tipo = $3 AND status = 'ABERTA' LIMIT 1`,
+          [params.depositoId, codigoSap, tipo],
+        );
+        if (rowsOf(dup)[0]) continue;
+        await client.query(
+          `INSERT INTO divergences
+            (id, deposito_id, codigo_sap, tipo, quantidade, status, inspecao_id, criado_em, criado_por)
+           VALUES ($1,$2,$3,$4,$5,'ABERTA',$6,now(),$7)`,
+          [newId(), params.depositoId, codigoSap, tipo, quantidade, inspecaoId, params.matricula],
+        );
+        divergencias[falta ? 'reposicao' : 'conferencia'] += 1;
+      }
+      await insertAuditLogWith(client, {
+        tipo: 'CONFERENCIA',
+        usuarioId: params.usuarioId,
+        matricula: params.matricula,
+        depositoId: params.depositoId,
+        entidade: 'inspections',
+        operacaoId: inspecaoId,
+        estadoPosterior: { status: 'CONCLUIDA', divergencias },
+        origem: params.origem,
+        dispositivo: params.dispositivo,
+      });
+    }
+
     const inspecao = await detalheComClient(client, params.depositoId, inspecaoId);
-    return { inspecao: inspecao.inspecao, itens: inspecao.itens };
+    return { inspecao: inspecao.inspecao, itens: inspecao.itens, divergencias };
   });
 }
 
@@ -424,7 +477,7 @@ export async function criarRevisao(params: {
       params.inspecaoId,
     ]);
     const det = await detalheComClient(client, params.depositoId, revisao.inspecao.id);
-    return { inspecao: det.inspecao, itens: det.itens };
+    return { inspecao: det.inspecao, itens: det.itens, divergencias: { reposicao: 0, conferencia: 0 } };
   });
 }
 

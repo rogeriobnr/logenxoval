@@ -39,6 +39,7 @@ export async function iniciarConferencia(
     itens: Array<{ codigoSap: string; qtdFisica: number; observacao?: string }>;
     assinaturaMatricula: string;
     matriculaConfirmacao?: string;
+    concluir?: boolean;
   },
 ) {
   validarMatricula(deps.authUser.matricula, params.matriculaConfirmacao);
@@ -53,6 +54,7 @@ export async function iniciarConferencia(
     assinaturaMatricula: params.assinaturaMatricula,
     origem: deps.origem,
     dispositivo: deps.dispositivo,
+    concluir: params.concluir,
   });
 }
 

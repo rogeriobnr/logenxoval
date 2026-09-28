@@ -138,8 +138,9 @@ id, depositoId, codigoSap, tipo (SALDO_NEGATIVO|CONFERENCIA|REPOSICAO),
 quantidade, status (ABERTA|EM_ANALISE|RESOLVIDA|CANCELADA),
 origemOperationId, inspecaoId, criadoEm, criadoPor, resolvidoEm, resolvidoPor
 ```
-- Criação (automática): baixa que negativa o saldo (`SALDO_NEGATIVO`), baixa marcada como **é reposição** (`REPOSICAO`, uma por item com pendência aberta — resolvida pela entrada de material), conferência finalizada com item divergente (`CONFERENCIA`) e correção `AGUARDAR_REPOSICAO`.
+- Criação (automática): baixa que negativa o saldo (`SALDO_NEGATIVO`), baixa marcada como **é reposição** (`REPOSICAO`, uma por item com pendência aberta — resolvida pela entrada de material), registro de conferência com `concluir: true` e item divergente (falta → `REPOSICAO`; sobra → `CONFERENCIA`, fase 20) e correção `AGUARDAR_REPOSICAO`.
 - Fase 19: `GET /deposits/:id/divergences` devolve a lista enriquecida com `descricao` do enxoval corrente; o espelho local de todos os dispositivos do depósito é alimentado na sincronização (card "Reposições pendentes" no dashboard).
+- Fase 20: exclusão de consumível/EPI do catálogo gera auditoria `EXCLUSAO_ESTOQUE` e `SOLICITACAO_EXCLUIDA` para cada solicitação (RASCUNHO/ENVIADA) encerrada.
 
 ### conversionSuggestions
 ```

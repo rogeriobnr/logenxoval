@@ -258,3 +258,95 @@ export async function aplicarEntradaEstoque(params: {
     return { jaProcessada: false, itemId, codigo: params.codigo, saldo, criado };
   });
 }
+
+export interface ObservacaoExclusaoEstoque {
+  itemId: string;
+  codigo: string;
+  movimentosExcluidos: number;
+  solicitacoesExcluidas: number;
+}
+
+/**
+ * Fase 20: exclui consumível/EPI do catálogo (Líder/Admin). Remove o item e os
+ * seus movimentos (histórico) e encerra solicitações abertas (RASCUNHO/ENVIADA)
+ * que referenciem o código, com auditoria em ambos.
+ */
+export async function excluirItemCatalogo(params: {
+  depositoId: string;
+  perfil: string;
+  usuarioId: string;
+  matricula: string;
+  tipo: 'CONSUMIVEL' | 'EPI';
+  itemId: string;
+  motivo: string;
+  assinaturaMatricula: string;
+  origem: 'ONLINE' | 'OFFLINE';
+  dispositivo: string;
+}): Promise<ObservacaoExclusaoEstoque> {
+  const tabela = params.tipo === 'CONSUMIVEL' ? 'consumables' : 'ppe_items';
+  const movTable = params.tipo === 'CONSUMIVEL' ? 'consumable_movements' : 'ppe_movements';
+  const refCol = params.tipo === 'CONSUMIVEL' ? 'consumable_id' : 'ppe_item_id';
+
+  return withDepositoContext(params.depositoId, params.perfil, async (client) => {
+    const found = await client.query(
+      `SELECT id, codigo FROM ${tabela} WHERE id = $1 AND deposito_id = $2 FOR UPDATE`,
+      [params.itemId, params.depositoId],
+    );
+    const item = rowsOf(found)[0];
+    if (!item) throw new AppError('NAO_ENCONTRADO', 'Item não encontrado no catálogo', 404);
+    const codigo = item.codigo as string;
+
+    const delMov = await client.query(
+      `DELETE FROM ${movTable} WHERE deposito_id = $1 AND ${refCol} = $2`,
+      [params.depositoId, params.itemId],
+    );
+    const movimentosExcluidos = Number((delMov as { rowCount?: unknown }).rowCount ?? 0);
+
+    const reqs = await client.query(
+      `SELECT id FROM requests
+       WHERE deposito_id = $1 AND status IN ('RASCUNHO','ENVIADA') AND itens @> $2::jsonb`,
+      [params.depositoId, JSON.stringify([{ codigo }])],
+    );
+    const reqRows = rowsOf(reqs);
+    for (const r of reqRows) {
+      await client.query('UPDATE requests SET status = $2 WHERE id = $1', [r.id, 'EXCLUIDA']);
+      await insertAuditLogWith(client, {
+        tipo: 'SOLICITACAO_EXCLUIDA',
+        usuarioId: params.usuarioId,
+        matricula: params.matricula,
+        depositoId: params.depositoId,
+        entidade: 'requests',
+        operacaoId: r.id as string,
+        estadoAnterior: { requestId: r.id, status: 'ABERTA' },
+        estadoPosterior: { requestId: r.id, status: 'EXCLUIDA' },
+        motivo: `Item excluído do catálogo (${codigo})`,
+        origem: params.origem,
+        dispositivo: params.dispositivo,
+      });
+    }
+
+    await client.query(`DELETE FROM ${tabela} WHERE id = $1`, [params.itemId]);
+
+    await insertAuditLogWith(client, {
+      tipo: 'EXCLUSAO_ESTOQUE',
+      usuarioId: params.usuarioId,
+      matricula: params.matricula,
+      depositoId: params.depositoId,
+      entidade: tabela,
+      operacaoId: params.itemId,
+      estadoPosterior: {
+        itemId: params.itemId,
+        codigo,
+        tipo: params.tipo,
+        movimentosExcluidos,
+        solicitacoesExcluidas: reqRows.length,
+        motivo: params.motivo,
+      },
+      motivo: params.motivo,
+      origem: params.origem,
+      dispositivo: params.dispositivo,
+    });
+
+    return { itemId: params.itemId, codigo, movimentosExcluidos, solicitacoesExcluidas: reqRows.length };
+  });
+}

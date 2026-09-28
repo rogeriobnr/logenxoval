@@ -78,6 +78,12 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
   // Itens marcados como NÃO recebidos na transição para RECEBIDA (chave = codigo).
   const [naoRecebSel, setNaoRecebSel] = useState<Record<string, boolean>>({});
 
+  // Exclusão de item do catálogo (Líder/Admin)
+  const [excluirAlvo, setExcluirAlvo] = useState<{ item: ConsumableRow | PpeItemRow; tipo: 'CONSUMIVEL' | 'EPI' } | null>(null);
+  const [excluirMotivo, setExcluirMotivo] = useState('');
+  const [excluirMatricula, setExcluirMatricula] = useState('');
+  const [excluirBusy, setExcluirBusy] = useState(false);
+
   // Compartilhar markdown (guarda a solicitação para marcar ENVIADA após o envio).
   const [shareAlvo, setShareAlvo] = useState<{ req: RequestRow; texto: string } | null>(null);
 
@@ -403,6 +409,34 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
     }
   };
 
+  const confirmarExclusao = async () => {
+    if (!excluirAlvo || !online) return;
+    setExcluirBusy(true);
+    try {
+      const assinatura = await assinarMatricula(session.matricula);
+      const res = await api.request<{ excluido: boolean; movimentosExcluidos: number; solicitacoesExcluidas: number }>(
+        'POST',
+        `/deposits/${depositoId}/estoque/${excluirAlvo.tipo}/${excluirAlvo.item.id}/excluir`,
+        {
+          motivo: excluirMotivo.trim(),
+          assinaturaMatricula: assinatura,
+          matriculaConfirmacao: excluirMatricula.trim() || session.matricula,
+        },
+      );
+      toast.success(
+        `Item excluído do catálogo${res.solicitacoesExcluidas > 0 ? ` · ${res.solicitacoesExcluidas} solicitação(ões) aberta(s) encerrada(s)` : ''}.`,
+      );
+      setExcluirAlvo(null);
+      setExcluirMotivo('');
+      setExcluirMatricula('');
+      await recarregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao excluir item.');
+    } finally {
+      setExcluirBusy(false);
+    }
+  };
+
   return (
     <div>
       <div className="card" style={{ marginBottom: '1rem' }}>
@@ -481,6 +515,23 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
                     </div>
                   </div>
                   {r.estoqueAtual < r.estoqueMinimo && <span className="chip warn">abaixo do mínimo</span>}
+                  {podeEntrada && (
+                    <Btn
+                      variant="ghost"
+                      className="small"
+                      onClick={() => {
+                        if (!online) {
+                          toast.error('Exclusão requer conexão.');
+                          return;
+                        }
+                        setExcluirAlvo({ item: r, tipo: TIPO_TAB[tab] });
+                        setExcluirMotivo('');
+                        setExcluirMatricula(session.matricula);
+                      }}
+                    >
+                      Excluir
+                    </Btn>
+                  )}
                 </div>
               ))}
             </div>
@@ -571,6 +622,24 @@ export function EstoqueScreen({ inicial = 'consumiveis' }: { inicial?: TabEstoqu
         {transAlvo?.acao.para === 'EXCLUIDA' && (
           <Field id="trans-motivo" label="Motivo" value={transMotivo} onChange={(e) => setTransMotivo(e.target.value)} placeholder="Opcional" />
         )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={excluirAlvo !== null}
+        title={`Excluir ${excluirAlvo ? SOLICITACAO_TIPO_LABEL[excluirAlvo.tipo].toLowerCase() : 'item'} do catálogo`}
+        message={
+          excluirAlvo
+            ? `Remove ${excluirAlvo.item.codigo} · ${excluirAlvo.item.descricao} e o histórico de movimentos. Solicitações abertas deste item são encerradas. Esta ação não pode ser desfeita.`
+            : undefined
+        }
+        confirmLabel="Confirmar exclusão"
+        danger
+        busy={excluirBusy}
+        onConfirm={() => void confirmarExclusao()}
+        onCancel={() => { setExcluirAlvo(null); setExcluirMotivo(''); setExcluirMatricula(''); }}
+      >
+        <Field id="ex-motivo" label="Motivo" value={excluirMotivo} onChange={(e) => setExcluirMotivo(e.target.value)} required placeholder="Ex.: lançamento incorreto" />
+        <Field id="ex-mat" label="Matrícula de confirmação" value={excluirMatricula} onChange={(e) => setExcluirMatricula(e.target.value)} required />
       </ConfirmDialog>
     </div>
   );

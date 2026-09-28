@@ -377,6 +377,16 @@ export const solicitacaoTransitionBodySchema = z.object({
   matriculaConfirmacao: matriculaSchema.optional(),
 });
 
+/**
+ * Exclusão de consumível/EPI do catálogo (fase 20): remove o item e seus
+ * movimentos e encerra solicitações abertas que o referenciam. Líder/Admin.
+ */
+export const estoqueExcluirBodySchema = z.object({
+  motivo: z.string().trim().min(5).max(500),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
 export const syncPayloadSolicitacaoSchema = solicitacaoCreateBodySchema
   .omit({ operationId: true })
   .extend({
@@ -468,6 +478,8 @@ export const createInspectionBodySchema = z.object({
   assinaturaMatricula: z.string().min(3),
   /** Confirmação crítica digitada pelo usuário — validada contra o usuário logado. */
   matriculaConfirmacao: matriculaSchema,
+  /** Quando true, a conferência nasce CONCLUIDA e as divergências abrem na hora: falta → REPOSICAO, sobra → CONFERENCIA. */
+  concluir: z.boolean().optional(),
 });
 
 export const finalizeInspectionBodySchema = z.object({

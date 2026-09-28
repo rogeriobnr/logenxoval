@@ -71,22 +71,23 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 | GET | `/deposits/:id/requests` | solicitações (mecânico vê as próprias; líder vê todas) |
 | POST | `/deposits/:id/requests` | criar solicitação (`{operationId, tipo: CONSUMIVEL\|EPI, itens[], assinaturaMatricula}`) |
 | POST | `/deposits/:id/requests/:rid/transition` | transição de status (`{operationId, para: ENVIADA\|RECEBIDA\|EXCLUIDA, naoRecebidos?, motivo?, assinaturaMatricula}`) — RECEBIDA aceita `naoRecebidos[]` (códigos não recebidos) |
+| POST | `/deposits/:id/estoque/:tipo/:itemId/excluir` | excluir consumível/EPI do catálogo (`{motivo, assinaturaMatricula, matriculaConfirmacao?}`) — líder/admin; remove item + movimentos, encerra solicitações abertas (RASCUNHO/ENVIADA) que referenciam o código; auditoria `EXCLUSAO_ESTOQUE` + `SOLICITACAO_EXCLUIDA` |
 
 ### Conferências
 | Método | Rota | Descrição |
 | ------ | ---- | --------- |
-| POST | `/deposits/:id/inspections` | criar conferência (volume) |
-| GET | `/deposits/:id/inspections` | listar/histórico |
-| POST | `/deposits/:id/inspections/:i/revision` | criar revisão (edição de finalizada) |
-| POST | `/deposits/:id/inspections/:i/items/:itemId/correction` | correção (tipo; atômico com peça avulsa) |
-| POST | `/deposits/:id/inspections/:i/items/:itemId/revert-correction` | estorno |
+| POST | `/deposits/:id/inspections` | criar conferência (volume). `concluir: true` (fase 20) conclui na hora (`CONCLUIDA`) e cria divergências automaticamente — falta → `REPOSICAO` (qtd = diferença), sobra → `CONFERENCIA` (qtd = diferença) — retorna `{inspecao, itens, divergencias}` |
+| GET | `/deposits/:id/inspections` | listar/histórico (somente leitura — fase 20) |
+| POST | `/deposits/:id/inspections/:i/revision` | criar revisão (edição de finalizada) — mantido p/ compatibilidade |
+| POST | `/deposits/:id/inspections/:i/items/:itemId/correction` | correção (tipo; atômico com peça avulsa) — mantido p/ compatibilidade |
+| POST | `/deposits/:id/inspections/:i/items/:itemId/revert-correction` | estorno — mantido p/ compatibilidade |
 
 ### Divergências
 | Método | Rota | Descrição |
 | ------ | ---- | --------- |
 | GET | `/deposits/:id/divergences` | lista do depósito — `?status=` (ABERTA\|RESOLVIDA\|…), `?tipo=` (REPOSICAO\|SALDO_NEGATIVO\|CONFERENCIA), `?limit=` — inclui `descricao` via join no enxoval corrente, mais recentes primeiro. Puxada para o espelho local de todos os dispositivos do depósito (fase 19). |
 
-> **Fechamento de pendência REPOSICAO**: apenas pela entrada de material (`POST /goldbox/entrada`) ou pela correção da conferência. Resolução manual não faz parte da fase 19 (decisão de escopo).
+> **Fechamento de pendência REPOSICAO**: apenas pela entrada de material (`POST /goldbox/entrada`). Divergências `CONFERENCIA` criadas no registro (`concluir: true`) também aparecem no dashboard.
 
 ### Docs
 | Método | Rota | Descrição |

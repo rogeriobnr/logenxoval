@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Perfil } from '@logenxoval/contracts';
 import { AppError } from '../lib/errors';
-import { aplicarEntradaEstoque } from '../repos/estoqueRepo';
+import { aplicarEntradaEstoque, excluirItemCatalogo } from '../repos/estoqueRepo';
 
 export interface EstoqueServiceDeps {
   app: FastifyInstance;
@@ -61,5 +61,33 @@ export async function registrarEntradaEstoque(
     dispositivo: params.dispositivo,
     dataHora: params.dataHora,
     assinaturaMatricula: params.assinaturaMatricula,
+  });
+}
+
+/** Exclusão de consumível/EPI do catálogo (fase 20) — Líder/Admin. */
+export async function excluirItemEstoque(
+  deps: EstoqueServiceDeps,
+  params: {
+    depositoId: string;
+    tipo: 'CONSUMIVEL' | 'EPI';
+    itemId: string;
+    motivo: string;
+    assinaturaMatricula: string;
+    matriculaConfirmacao?: string;
+  },
+) {
+  validarMatricula(deps.authUser.matricula, params.matriculaConfirmacao);
+  exigirNaoMecanico(deps.authUser.perfil);
+  return excluirItemCatalogo({
+    depositoId: params.depositoId,
+    perfil: deps.authUser.perfil,
+    usuarioId: deps.authUser.sub,
+    matricula: deps.authUser.matricula,
+    tipo: params.tipo,
+    itemId: params.itemId,
+    motivo: params.motivo,
+    assinaturaMatricula: params.assinaturaMatricula,
+    origem: deps.origem,
+    dispositivo: deps.dispositivo,
   });
 }

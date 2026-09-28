@@ -37,7 +37,7 @@ export async function registerInspectionRoutes(app: FastifyInstance): Promise<vo
       const body = req.body as typeof createInspectionBodySchema._type;
       const { depositoId } = req.params as { depositoId: string };
       const res = await inspectionService.iniciarConferencia(depsOf(app, req), { ...body, depositoId });
-      return { inspecao: res.inspecao, itens: res.itens };
+      return { inspecao: res.inspecao, itens: res.itens, divergencias: res.divergencias };
     },
   );
 

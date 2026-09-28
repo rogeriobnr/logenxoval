@@ -1,19 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import type {
-  InspectionItemRow,
-  InspectionRow,
-  InventoryItemRow,
-  SparePartRow,
-  TipoCorrecao,
-} from '@logenxoval/contracts';
+import type { InspectionItemRow, InspectionRow, InventoryItemRow } from '@logenxoval/contracts';
 import { useAuth } from '../auth/AuthContext';
-import { Alert, Btn, Field, SelectField } from '../components/ui';
+import { Alert, Btn, Field } from '../components/ui';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useToast } from '../components/Toasts';
 import { assinarMatricula } from '../lib/assinatura';
-import { resumoDeItens, statusDeItem, TIPO_CORRECAO_LABEL, INSPECAO_STATUS_LABEL } from '../lib/conferencia';
+import { resumoDeItens, statusDeItem, INSPECAO_STATUS_LABEL } from '../lib/conferencia';
 import { listInventoryItemsLocal } from '../repos/local';
-import { espelharEnxoval } from '../services/sync';
+import { espelharDivergencias, espelharEnxoval } from '../services/sync';
 
 type Tab = 'contar' | 'historico';
 
@@ -27,14 +21,6 @@ interface ConferenciaDetalhe {
   itens: Array<InspectionItemRow & { sparePartDisponivel?: number }>;
 }
 
-const TIPOS: TipoCorrecao[] = [
-  'APENAS_REGISTRAR_DIVERGENCIA',
-  'CORRIGIR_COM_PECA_AVULSA',
-  'AGUARDAR_REPOSICAO',
-  'ACAO_LIDERANCA',
-  'OUTRA',
-];
-
 function agora(): string {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -46,8 +32,6 @@ export function ConferenciaScreen() {
   const [tab, setTab] = useState<Tab>('contar');
 
   const depositoId = session?.depositoAtivo?.id ?? '';
-  const perfil = session?.perfil ?? '';
-  const podeEstornar = perfil === 'LIDER' || perfil === 'ADMIN';
 
   const [busy, setBusy] = useState(false);
 
@@ -65,28 +49,7 @@ export function ConferenciaScreen() {
   const [conferencias, setConferencias] = useState<InspecaoLista[]>([]);
   const [detalhe, setDetalhe] = useState<ConferenciaDetalhe | null>(null);
   const [fBusca, setFBusca] = useState('');
-  const [fFiltro, setFFiltro] = useState<'todos' | 'divergentes' | 'corrigidos'>('todos');
-
-  // Modal correção
-  const [corrigirAlvo, setCorrigirAlvo] = useState<InspectionItemRow | null>(null);
-  const [tiposUtilizados, setTiposUtilizados] = useState<Record<string, TipoCorrecao>>({});
-  const [corrTipo, setCorrTipo] = useState<TipoCorrecao>('APENAS_REGISTRAR_DIVERGENCIA');
-  const [corrSpareId, setCorrSpareId] = useState('');
-  const [corrQtd, setCorrQtd] = useState('');
-  const [corrObs, setCorrObs] = useState('');
-  const [corrMatricula, setCorrMatricula] = useState('');
-  const [pecas, setPecas] = useState<SparePartRow[]>([]);
-
-  // Modal estorno / finalizar / revisar
-  const [estornarAlvo, setEstornarAlvo] = useState<InspectionItemRow | null>(null);
-  const [estornarMotivo, setEstornarMotivo] = useState('');
-  const [estornarMatricula, setEstornarMatricula] = useState('');
-  const [finalizarOpen, setFinalizarOpen] = useState(false);
-  const [finalizarObs, setFinalizarObs] = useState('');
-  const [finalizarMatricula, setFinalizarMatricula] = useState('');
-  const [revisaoOpen, setRevisaoOpen] = useState(false);
-  const [revisaoItens, setRevisaoItens] = useState<Record<string, string>>({});
-  const [revisaoMatricula, setRevisaoMatricula] = useState('');
+  const [fFiltro, setFFiltro] = useState<'todos' | 'divergentes'>('todos');
 
   const carregarEnxoval = useCallback(async () => {
     if (!depositoId) return;
@@ -195,14 +158,30 @@ export function ConferenciaScreen() {
         return;
       }
       const assinatura = await assinarMatricula(session.matricula);
-      await api.request('POST', `/deposits/${depositoId}/inspections`, {
-        hora: agora(),
-        observacao: obsContagem.trim() || undefined,
-        itens,
-        assinaturaMatricula: assinatura,
-        matriculaConfirmacao: session.matricula,
-      });
-      toast.success('Conferência registrada em andamento. Finalize pelo histórico.');
+      const res = await api.request<{ divergencias?: { reposicao: number; conferencia: number } }>(
+        'POST',
+        `/deposits/${depositoId}/inspections`,
+        {
+          hora: agora(),
+          observacao: obsContagem.trim() || undefined,
+          itens,
+          assinaturaMatricula: assinatura,
+          matriculaConfirmacao: session.matricula,
+          concluir: true,
+        },
+      );
+      const div = res.divergencias;
+      const msg = div && (div.reposicao > 0 || div.conferencia > 0)
+        ? `Conferência concluída — ${div.reposicao} falta(s) sinalizada(s) para reposição e ${div.conferencia} divergência(s) abertas no dashboard.`
+        : 'Conferência concluída — sem divergências.';
+      toast.success(msg);
+      if (navigator.onLine) {
+        try {
+          await espelharDivergencias(api, depositoId);
+        } catch {
+          // o espelho refresca no próximo acesso ao dashboard
+        }
+      }
       setConfirmarRegistroOpen(false);
       setTab('historico');
       await carregarHistorico();
@@ -231,10 +210,6 @@ export function ConferenciaScreen() {
     try {
       const res = await api.request<ConferenciaDetalhe>('GET', `/deposits/${depositoId}/inspections/${inspecaoId}`);
       setDetalhe(res);
-      if (navigator.onLine) {
-        const sp = await api.request<{ pecas: SparePartRow[] }>('GET', `/deposits/${depositoId}/spare-parts`);
-        setPecas(sp.pecas);
-      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao abrir conferência.');
     }
@@ -242,122 +217,7 @@ export function ConferenciaScreen() {
 
   const fecharDetalhe = () => {
     setDetalhe(null);
-    setCorrigirAlvo(null);
-    setEstornarAlvo(null);
-    setFinalizarOpen(false);
-    setRevisaoOpen(false);
   };
-
-const abrirCorrecao = (item: InspectionItemRow) => {
-    const usado = tiposUtilizados[item.id] ?? (item.corregido ? 'APENAS_REGISTRAR_DIVERGENCIA' : undefined);
-    setCorrigirAlvo(item);
-    setCorrTipo((item.corregido ? 'OUTRA' : usado) ?? 'APENAS_REGISTRAR_DIVERGENCIA');
-    setCorrSpareId('');
-    setCorrQtd(String(Math.abs(item.diferenca) || 1));
-    setCorrObs(item.corregido ? 'Nova correção após estorno/ajuste.' : '');
-    setCorrMatricula(session.matricula);
-  };
-
-  const confirmarCorrecao = async () => {
-    if (!corrigirAlvo) return;
-    setBusy(true);
-    try {
-      const assinatura = await assinarMatricula(session.matricula);
-      await api.request('POST', `/deposits/${depositoId}/inspections/${corrigirAlvo.inspectionId}/items/${corrigirAlvo.id}/correction`, {
-        operationId: crypto.randomUUID(),
-        tipo: corrTipo,
-        sparePartId: corrTipo === 'CORRIGIR_COM_PECA_AVULSA' ? corrSpareId || undefined : undefined,
-        quantidade: corrTipo === 'CORRIGIR_COM_PECA_AVULSA' ? Number(corrQtd) : undefined,
-        observacao: corrObs.trim() || undefined,
-        assinaturaMatricula: assinatura,
-        matriculaConfirmacao: corrMatricula.trim() || session.matricula,
-      });
-      toast.success('Correção registrada.');
-      setCorrigirAlvo(null);
-      setTiposUtilizados((p) => ({ ...p, [corrigirAlvo.id]: corrTipo }));
-      if (detalhe) await abrirDetalhe(detalhe.inspecao.id);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao corrigir item.');
-    }
-    setBusy(false);
-  };
-
-  const confirmarEstorno = async () => {
-    if (!estornarAlvo) return;
-    setBusy(true);
-    try {
-      const assinatura = await assinarMatricula(session.matricula);
-      await api.request('POST', `/deposits/${depositoId}/inspections/${estornarAlvo.inspectionId}/items/${estornarAlvo.id}/revert-correction`, {
-        operationId: crypto.randomUUID(),
-        motivo: estornarMotivo.trim(),
-        assinaturaMatricula: assinatura,
-        matriculaConfirmacao: estornarMatricula.trim() || session.matricula,
-      });
-      toast.success('Estorno da correção registrado — peça avulsa devolvida e saldo do enxoval debitado.');
-      setEstornarAlvo(null);
-      if (detalhe) await abrirDetalhe(detalhe.inspecao.id);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao estornar correção.');
-    }
-    setBusy(false);
-  };
-
-  const confirmarFinalizar = async () => {
-    if (!detalhe) return;
-    setBusy(true);
-    try {
-      const assinatura = await assinarMatricula(session.matricula);
-      await api.request('POST', `/deposits/${depositoId}/inspections/${detalhe.inspecao.id}/finalize`, {
-        observacao: finalizarObs.trim() || undefined,
-        assinaturaMatricula: assinatura,
-        matriculaConfirmacao: finalizarMatricula.trim() || session.matricula,
-      });
-      toast.success('Conferência concluída — divergências abertas no dashboard.');
-      setFinalizarOpen(false);
-      await abrirDetalhe(detalhe.inspecao.id);
-      await carregarHistorico();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao finalizar conferência.');
-    }
-    setBusy(false);
-  };
-
-  const iniciarRevisao = () => {
-    if (!detalhe) return;
-    const rev: Record<string, string> = {};
-    for (const i of detalhe.itens) rev[i.codigoSap] = String(i.qtdFisica);
-    setRevisaoItens(rev);
-    setRevisaoMatricula(session.matricula);
-    setRevisaoOpen(true);
-  };
-
-  const confirmarRevisao = async () => {
-    if (!detalhe) return;
-    setBusy(true);
-    try {
-      const assinatura = await assinarMatricula(session.matricula);
-      const itens = detalhe.itens
-        .map((i) => ({ codigoSap: i.codigoSap, qtdFisica: Number(revisaoItens[i.codigoSap]) }))
-        .filter((i) => Number.isFinite(i.qtdFisica));
-      await api.request('POST', `/deposits/${depositoId}/inspections/${detalhe.inspecao.id}/revision`, {
-        hora: agora(),
-        itens,
-        assinaturaMatricula: assinatura,
-        matriculaConfirmacao: revisaoMatricula.trim() || session.matricula,
-      });
-      toast.success('Revisão criada — nova conferência REVISADA referenciando a original.');
-      setRevisaoOpen(false);
-      await carregarHistorico();
-      setDetalhe(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao revisar conferência.');
-    }
-    setBusy(false);
-  };
-
-  const pecasDoItem = corrigirAlvo
-    ? pecas.filter((p) => p.codigoSap === corrigirAlvo.codigoSap && p.quantidadeAtual > 0)
-    : [];
 
   return (
     <div>
@@ -378,7 +238,7 @@ const abrirCorrecao = (item: InspectionItemRow) => {
       {tab === 'contar' && (
         <form onSubmit={registrarContagem} className="card">
           <h3>Contagem do enxoval</h3>
-          <div className="list-sub">Marque os itens como conferidos conforme a contagem física — nada entra sem ser conferido.</div>
+          <div className="list-sub">Marque os itens como conferidos conforme a contagem física. Ao registrar, a conferência já é concluída e as divergências abrem na hora no dashboard.</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.4rem' }}>
             <Field id="ct-busca" placeholder="Código SAP ou descrição" value={busca} onChange={(e) => setBusca(e.target.value)} />
             <select value={filtro} onChange={(e) => setFiltro(e.target.value as typeof filtro)} aria-label="Filtro de itens">
@@ -450,7 +310,7 @@ const abrirCorrecao = (item: InspectionItemRow) => {
           </div>
           <Field id="ct-obs" label="Observação geral" value={obsContagem} onChange={(e) => setObsContagem(e.target.value)} placeholder="Opcional" />
           <Btn type="submit" disabled={busy}>
-            {busy ? 'Registrando…' : `Registrar conferência (${resumoContagem.conferidosC}/${resumoContagem.total} conferidos)`}
+            {busy ? 'Registrando…' : `Registrar e concluir conferência (${resumoContagem.conferidosC}/${resumoContagem.total} conferidos)`}
           </Btn>
           {resumoContagem.pendentes > 0 && (
             <div className="list-sub" style={{ marginTop: '0.3rem' }}>
@@ -467,16 +327,11 @@ const abrirCorrecao = (item: InspectionItemRow) => {
           <select value={fFiltro} onChange={(e) => setFFiltro(e.target.value as typeof fFiltro)} style={{ marginTop: '0.4rem' }} aria-label="Filtro do histórico">
             <option value="todos">Todas</option>
             <option value="divergentes">Com divergências</option>
-            <option value="corrigidos">Com correções</option>
           </select>
           <div style={{ marginTop: '0.6rem' }}>
             {conferencias.length === 0 && <div className="list-sub">Nenhuma conferência encontrada.</div>}
             {conferencias
-              .filter((c) => {
-                if (fFiltro === 'divergentes') return c.divergentes > 0;
-                if (fFiltro === 'corrigidos') return c.tipoCorrecao !== undefined && c.tipoCorrecao !== null;
-                return true;
-              })
+              .filter((c) => (fFiltro === 'divergentes' ? c.divergentes > 0 : true))
               .filter((c) => !fBusca.trim() || c.id.toLowerCase().includes(fBusca.trim().toLowerCase()))
               .map((c) => (
                 <button key={c.id} type="button" className="list-item" style={{ width: '100%', textAlign: 'left', cursor: 'pointer' }} onClick={() => void abrirDetalhe(c.id)}>
@@ -487,7 +342,6 @@ const abrirCorrecao = (item: InspectionItemRow) => {
                     </div>
                     <div className="list-sub">
                       {c.matricula} · {c.totalItens} itens · {c.divergentes} divergentes
-                      {c.tipoCorrecao ? ` · ${TIPO_CORRECAO_LABEL[c.tipoCorrecao]}` : ''}
                     </div>
                   </div>
                 </button>
@@ -517,9 +371,7 @@ const abrirCorrecao = (item: InspectionItemRow) => {
           })()}
 
           <div style={{ maxHeight: '42vh', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px', marginBottom: '0.8rem' }}>
-            {detalhe.itens
-              .filter((i) => (fFiltro === 'corrigidos' ? i.corregido : true))
-              .map((i) => (
+            {detalhe.itens.map((i) => (
               <div key={i.id} className="list-item">
                 <div style={{ flex: 1 }}>
                   <div className="list-title">{i.codigoSap} {i.corregido ? '· corrigido ✓' : ''}</div>
@@ -539,123 +391,19 @@ const abrirCorrecao = (item: InspectionItemRow) => {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.3rem' }}>
                   <span className={`chip ${i.status === 'DIVERGENTE' ? 'warn' : i.status === 'PENDENTE' ? 'warn' : 'ok'}`}>{i.status}</span>
-                  {!i.corregido && (
-                    <Btn variant="secondary" className="small" onClick={() => abrirCorrecao(i)}>Corrigir</Btn>
-                  )}
-                  {i.corregido && podeEstornar && (
-                    <Btn variant="ghost" className="small" onClick={() => { setEstornarAlvo(i); setEstornarMotivo(''); setEstornarMatricula(session.matricula); }}>Estornar</Btn>
-                  )}
                 </div>
               </div>
             ))}
           </div>
-
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {detalhe.inspecao.status === 'EM_ANDAMENTO' && (
-              <Btn onClick={() => setFinalizarOpen(true)}>Finalizar conferência</Btn>
-            )}
-            <Btn variant={detalhe.inspecao.status === 'CONCLUIDA' ? 'primary' : 'secondary'} onClick={iniciarRevisao}>
-              Revisar contagem
-            </Btn>
-          </div>
         </div>
       )}
-
-      <ConfirmDialog
-        open={corrigirAlvo !== null}
-        title={`Correção de ${corrigirAlvo?.codigoSap ?? ''}`}
-        message={
-          corrigirAlvo
-            ? `lançado ${corrigirAlvo.qtdOficial} · sistema ${corrigirAlvo.qtdSistema} · física ${corrigirAlvo.qtdFisica} · diferença ${corrigirAlvo.diferenca}`
-            : undefined
-        }
-        confirmLabel="Confirmar correção"
-        busy={busy}
-        onConfirm={() => void confirmarCorrecao()}
-        onCancel={() => setCorrigirAlvo(null)}
-      >
-        <SelectField id="co-tipo" label="Tratamento da divergência" value={corrTipo} onChange={(e) => setCorrTipo(e.target.value as TipoCorrecao)}>
-          {TIPOS.map((t) => <option key={t} value={t}>{TIPO_CORRECAO_LABEL[t]}</option>)}
-        </SelectField>
-        {corrTipo === 'CORRIGIR_COM_PECA_AVULSA' && (
-          <>
-            <SelectField id="co-peca" label="Peça avulsa (mesmo depósito)" value={corrSpareId}
-              onChange={(e) => setCorrSpareId(e.target.value)} required={pecasDoItem.length > 0}>
-              {pecasDoItem.length === 0 && <option value="">Sem peça avulsa disponível para este SAP</option>}
-              {pecasDoItem.map((p) => (
-                <option key={p.id} value={p.id}>{p.codigoSap} · {p.descricao.slice(0, 40)} (saldo {p.quantidadeAtual})</option>
-              ))}
-            </SelectField>
-            <Field id="co-qtd" label="Quantidade aplicada" type="number" min="1" value={corrQtd} onChange={(e) => setCorrQtd(e.target.value)} required />
-          </>
-        )}
-        <Field id="co-obs" label="Observação" value={corrObs} onChange={(e) => setCorrObs(e.target.value)} placeholder="Opcional" />
-        <Field id="co-mat" label="Matrícula de confirmação" value={corrMatricula} onChange={(e) => setCorrMatricula(e.target.value)} required />
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={estornarAlvo !== null}
-        title={`Estornar correção de ${estornarAlvo?.codigoSap ?? ''}`}
-        message="Devolve a peça avulsa usada e debita o saldo do enxoval."
-        confirmLabel="Confirmar estorno"
-        danger
-        busy={busy}
-        onConfirm={() => void confirmarEstorno()}
-        onCancel={() => setEstornarAlvo(null)}
-      >
-        <Field id="et-motivo" label="Motivo" value={estornarMotivo} onChange={(e) => setEstornarMotivo(e.target.value)} required placeholder="Ex.: quantidade errada" />
-        <Field id="et-mat" label="Matrícula de confirmação" value={estornarMatricula} onChange={(e) => setEstornarMatricula(e.target.value)} required />
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={finalizarOpen && detalhe !== null}
-        title="Finalizar conferência"
-        message={
-          detalhe
-            ? `Serão abertas divergências CONFERENCIA para ${detalhe.itens.filter((i) => i.status === 'DIVERGENTE').length} item(ns).`
-            : undefined
-        }
-        confirmLabel="Confirmar finalização"
-        busy={busy}
-        onConfirm={() => void confirmarFinalizar()}
-        onCancel={() => setFinalizarOpen(false)}
-      >
-        <Field id="fn-obs" label="Observação" value={finalizarObs} onChange={(e) => setFinalizarObs(e.target.value)} placeholder="Opcional" />
-        <Field id="fn-mat" label="Matrícula de confirmação" value={finalizarMatricula} onChange={(e) => setFinalizarMatricula(e.target.value)} required />
-      </ConfirmDialog>
-
-      <ConfirmDialog
-        open={revisaoOpen && detalhe !== null}
-        title="Revisar contagem"
-        message="Cria uma nova inspeção REVISADA; a original é preservada."
-        confirmLabel="Criar revisão"
-        busy={busy}
-        onConfirm={() => void confirmarRevisao()}
-        onCancel={() => setRevisaoOpen(false)}
-      >
-        <div style={{ maxHeight: '30vh', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '8px', marginBottom: '0.6rem' }}>
-          {detalhe?.itens.map((i) => (
-            <div key={i.id} className="list-item">
-              <div className="list-title" style={{ flex: 1 }}>{i.codigoSap}</div>
-              <input
-                type="number"
-                value={revisaoItens[i.codigoSap] ?? ''}
-                onChange={(e) => setRevisaoItens((p) => ({ ...p, [i.codigoSap]: e.target.value }))}
-                style={{ width: '5rem' }}
-                aria-label={`Quantidade revisada de ${i.codigoSap}`}
-              />
-            </div>
-          ))}
-        </div>
-        <Field id="rv-mat" label="Matrícula de confirmação" value={revisaoMatricula} onChange={(e) => setRevisaoMatricula(e.target.value)} required />
-      </ConfirmDialog>
 
       <ConfirmDialog
         open={confirmarRegistroOpen}
         title="Registrar com itens pendentes?"
         message={
           resumoContagem.pendentes > 0
-            ? `${resumoContagem.pendentes} item(ns) ainda não conferido(s) serão registrados com a física igual ao sistema. Continuar?`
+            ? `${resumoContagem.pendentes} item(ns) ainda não conferido(s) serão registrados com a física igual ao sistema. A conferência será concluída na hora. Continuar?`
             : undefined
         }
         confirmLabel="Registrar mesmo assim"
