@@ -18,7 +18,6 @@ import {
   clearDepositoLocalData,
   listDepositosLocal,
   listFila,
-  listRequestsLocal,
   marcarFalhaFila,
   removerDaFila,
   setSyncState,
@@ -32,6 +31,7 @@ import {
   upsertRequests,
   upsertSpareParts,
   upsertVersions,
+  reconciliarEspelho,
 } from '../repos/local';
 
 export interface EspelhoResult {
@@ -182,27 +182,46 @@ export async function espelharEstoque(api: ApiClient, depositoId: string): Promi
     'GET',
     `/deposits/${depositoId}/consumables`,
   );
-  if (consumiveis.consumiveis.length > 0) await upsertConsumiveis(consumiveis.consumiveis);
+  await upsertConsumiveis(consumiveis.consumiveis);
 
   const ppe = await api.request<{ ppe: PpeItemRow[] }>('GET', `/deposits/${depositoId}/ppe`);
-  if (ppe.ppe.length > 0) await upsertPpeItems(ppe.ppe);
+  await upsertPpeItems(ppe.ppe);
 
   const reqs = await api.request<{ solicitacoes: RequestRow[] }>(
     'GET',
     `/deposits/${depositoId}/requests`,
   );
-  if (reqs.solicitacoes.length > 0) await upsertRequests(reqs.solicitacoes);
+  await upsertRequests(reqs.solicitacoes);
 
+  // O espelho é reconciliado com o servidor: item excluído do catálogo e
+  // solicitação que saiu da lista (encerrada, excluída ou de outro menu) saem
+  // do aparelho. Só o que está pendente na fila de sincronização é preservado.
   const fila = await listFila();
-  const emFila = new Set(
-    fila
-      .filter((q) => q.entidade === 'SOLICITACAO' && (q.status === 'PENDENTE' || q.status === 'ERRO'))
-      .map((q) => `local:${q.operationId}`),
+  const pendentes = fila.filter((q) => q.status === 'PENDENTE' || q.status === 'ERRO');
+  const idsProtegidos = new Set<string>();
+  for (const q of pendentes) {
+    if (q.entidade === 'SOLICITACAO') idsProtegidos.add(`local:${q.operationId}`);
+    if (q.entidade === 'SOLICITACAO_TRANSICAO') {
+      const alvo = (q.payload as { requestId?: string }).requestId;
+      if (alvo) idsProtegidos.add(alvo);
+    }
+  }
+  await reconciliarEspelho(
+    'consumables',
+    depositoId,
+    new Set(consumiveis.consumiveis.map((c) => c.id)),
   );
-  const locais = (await listRequestsLocal(depositoId)).filter(
-    (r) => r.id.startsWith('local:') && !emFila.has(r.id),
+  await reconciliarEspelho(
+    'ppeItems',
+    depositoId,
+    new Set(ppe.ppe.map((p) => p.id)),
   );
-  for (const r of locais) await db.requests.delete(r.id);
+  await reconciliarEspelho(
+    'requests',
+    depositoId,
+    new Set(reqs.solicitacoes.map((r) => r.id)),
+    idsProtegidos,
+  );
 }
 
 /**

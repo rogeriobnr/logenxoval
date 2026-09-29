@@ -8,11 +8,17 @@ import { assinarMatricula } from '../lib/assinatura';
 import {
   acoesDaSolicitacao,
   filtrarPorBusca,
+  itensNoCatalogo,
   REQUEST_STATUS_LABEL,
   SOLICITACAO_TIPO_LABEL,
   type AcaoSolicitacao,
 } from '../lib/estoque';
-import { listRequestsLocal, registrarTransicaoSolicitacaoOffline } from '../repos/local';
+import {
+  listConsumiveisLocal,
+  listPpeLocal,
+  listRequestsLocal,
+  registrarTransicaoSolicitacaoOffline,
+} from '../repos/local';
 import { espelharEstoque } from '../services/sync';
 
 /**
@@ -28,6 +34,7 @@ export function SolicitacoesScreen() {
   const usuarioId = session?.userId ?? '';
 
   const [requests, setRequests] = useState<RequestRow[]>([]);
+  const [codigosCatalogo, setCodigosCatalogo] = useState<Set<string>>(new Set());
   const [busca, setBusca] = useState('');
   const [fTipo, setFTipo] = useState<'TODAS' | SolicitacaoTipo>('TODAS');
   const [transBusy, setTransBusy] = useState(false);
@@ -45,6 +52,8 @@ export function SolicitacoesScreen() {
       }
     }
     setRequests(await listRequestsLocal(depositoId));
+    const [cons, ppe] = await Promise.all([listConsumiveisLocal(depositoId), listPpeLocal(depositoId)]);
+    setCodigosCatalogo(new Set([...cons.map((c) => c.codigo), ...ppe.map((p) => p.codigo)]));
   }, [api, depositoId, online]);
 
   useEffect(() => {
@@ -56,8 +65,9 @@ export function SolicitacoesScreen() {
   }
 
   const minhas = requests.filter((r) => perfil !== 'MECANICO' || r.solicitanteId === usuarioId);
+  const noCatalogo = minhas.filter((r) => itensNoCatalogo(r.itens, codigosCatalogo).length > 0);
   const visiveis = filtrarPorBusca(
-    minhas,
+    noCatalogo,
     busca,
     (r) => `${r.matricula} ${SOLICITACAO_TIPO_LABEL[r.tipo]} ${r.itens.map((i) => i.codigo).join(' ')}`,
   );
@@ -126,11 +136,12 @@ export function SolicitacoesScreen() {
 
   const renderRequisicao = (req: RequestRow) => {
     const acoes = acoesDaSolicitacao(req, perfil, usuarioId);
+    const itens = itensNoCatalogo(req.itens, codigosCatalogo);
     const itensTexto = req.status === 'RECEBIDA'
-      ? req.itens
+      ? itens
           .map((i) => (i.recebido === false ? `${i.qtd}x ${i.codigo} ✗` : `${i.qtd}x ${i.codigo} ✓`))
           .join(' · ')
-      : req.itens.map((i) => `${i.qtd}x ${i.codigo} ${i.descricao}`).join(' · ') || 'sem itens';
+      : itens.map((i) => `${i.qtd}x ${i.codigo} ${i.descricao}`).join(' · ') || 'sem itens';
     return (
       <div key={req.id} className="list-item" style={{ borderBottom: '1px solid var(--line)' }}>
         <div style={{ flex: 1 }}>
@@ -138,7 +149,7 @@ export function SolicitacoesScreen() {
             {SOLICITACAO_TIPO_LABEL[req.tipo]} · {req.matricula} · {new Date(req.dataEm).toLocaleString('pt-BR')}
           </div>
           <div className="list-sub">{itensTexto}</div>
-          {req.status === 'RECEBIDA' && req.itens.some((i) => i.recebido === false) && (
+          {req.status === 'RECEBIDA' && itens.some((i) => i.recebido === false) && (
             <div className="list-sub">Há itens que não foram recebidos.</div>
           )}
         </div>
@@ -171,7 +182,7 @@ export function SolicitacoesScreen() {
         <div className="list-item">
           <div>
             <div className="list-title">{session.depositoAtivo.nome}</div>
-            <div className="list-sub">Solicitações registradas: {minhas.length}</div>
+            <div className="list-sub">Solicitações registradas: {noCatalogo.length}</div>
           </div>
         </div>
       </div>

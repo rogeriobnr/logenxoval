@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { db } from '../src/db/db';
+import { espelharEstoque } from '../src/services/sync';
 import {
   listConsumiveisLocal,
   listPpeLocal,
@@ -170,4 +171,76 @@ test('registrarTransicaoSolicitacaoOffline: RECEBIDA marca itens não recebidos 
   const fila = await filaDoDeposito('d1');
   assert.equal(fila[0].entidade, 'SOLICITACAO_TRANSICAO');
   assert.deepEqual((fila[0].payload as { naoRecebidos?: string[] }).naoRecebidos, ['AD-ISOL']);
+});
+
+test('espelharEstoque: item excluído e solicitação que saiu da lista somem do espelho', async () => {
+  await upsertConsumiveis([
+    { id: 'c1', depositoId: 'd1', codigo: 'LUVA-40', descricao: 'Luvas', unidade: 'CZ', quantidade: 10, estoqueAtual: 10, estoqueMinimo: 5, historico: [] },
+    { id: 'c-fantasma', depositoId: 'd1', codigo: 'CAP-5', descricao: 'Item excluído', unidade: 'UN', quantidade: 1, estoqueAtual: 1, estoqueMinimo: 0, historico: [] },
+  ]);
+  await upsertRequests([
+    {
+      id: 'r3',
+      depositoId: 'd1',
+      tipo: 'CONSUMIVEL',
+      solicitanteId: 'u1',
+      matricula: 'F10-MEC',
+      status: 'ENVIADA',
+      dataEm: '2026-09-23T10:00:00.000Z',
+      itens: [{ qtd: 4, codigo: 'LUVA-40', descricao: 'Luvas' }],
+    },
+    {
+      id: 'r-fantasma',
+      depositoId: 'd1',
+      tipo: 'CONSUMIVEL',
+      solicitanteId: 'u1',
+      matricula: 'F10-MEC',
+      status: 'ENVIADA',
+      dataEm: '2026-09-23T11:00:00.000Z',
+      itens: [{ qtd: 1, codigo: 'CAP-5', descricao: 'Item excluído' }],
+    },
+  ]);
+
+  const api = {
+    request: async (_m: string, url: string) => {
+      if (url.endsWith('/consumables')) {
+        return { consumiveis: [{ id: 'c1', depositoId: 'd1', codigo: 'LUVA-40', descricao: 'Luvas', unidade: 'CZ', quantidade: 10, estoqueAtual: 10, estoqueMinimo: 5, historico: [] }] };
+      }
+      if (url.endsWith('/ppe')) return { ppe: [] };
+      return { solicitacoes: [] };
+    },
+  } as unknown as Parameters<typeof espelharEstoque>[0];
+
+  await espelharEstoque(api, 'd1');
+
+  const cons = await listConsumiveisLocal('d1');
+  assert.deepEqual(cons.map((c) => c.codigo), ['LUVA-40']);
+  assert.equal((await listRequestsLocal('d1')).length, 0);
+});
+
+test('espelharEstoque: pendência da fila nunca é apagada na reconciliação', async () => {
+  const operationId = 'op-offline-1';
+  await registrarSolicitacaoOffline({
+    operationId,
+    depositoId: 'd1',
+    tipo: 'CONSUMIVEL',
+    itens: [{ qtd: 2, codigo: 'AD-ISOL', descricao: 'Adesivo' }],
+    solicitanteId: 'u1',
+    matricula: 'F10-MEC',
+    assinaturaMatricula: 'F10-MEC',
+  });
+
+  const api = {
+    request: async (_m: string, url: string) => {
+      if (url.endsWith('/consumables')) return { consumiveis: [] };
+      if (url.endsWith('/ppe')) return { ppe: [] };
+      return { solicitacoes: [] };
+    },
+  } as unknown as Parameters<typeof espelharEstoque>[0];
+
+  await espelharEstoque(api, 'd1');
+
+  const reqs = await listRequestsLocal('d1');
+  assert.equal(reqs.length, 1);
+  assert.equal(reqs[0].id, `local:${operationId}`);
 });

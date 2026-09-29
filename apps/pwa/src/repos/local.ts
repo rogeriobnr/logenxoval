@@ -666,6 +666,30 @@ export async function upsertRequests(requests: RequestRow[]): Promise<void> {
 }
 
 /**
+ * Fase 21: o servidor é a fonte da verdade do espelho — o que ele não devolve
+ * mais foi excluído (item do catálogo removido ou solicitação encerrada/limpa)
+ * e sai do IndexedDB. Filas pendentes nunca são apagadas.
+ */
+export async function reconciliarEspelho(
+  tabela: 'consumables' | 'ppeItems' | 'requests',
+  depositoId: string,
+  idsDoServidor: Set<string>,
+  idsProtegidos: Set<string> = new Set(),
+): Promise<number> {
+  const store = db[tabela];
+  let removidos = 0;
+  await db.transaction('rw', store, async () => {
+    const rows = await store.where('depositoId').equals(depositoId).toArray();
+    for (const row of rows as Array<{ id: string }>) {
+      if (idsDoServidor.has(row.id) || idsProtegidos.has(row.id)) continue;
+      await store.delete(row.id);
+      removidos += 1;
+    }
+  });
+  return removidos;
+}
+
+/**
  * Fase 19: espelha as divergências do servidor no IndexedDB, permitindo que
  * qualquer dispositivo do depósito veja as pendências (e resoluções) criadas
  * em outros aparelhos.

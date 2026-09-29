@@ -79,3 +79,11 @@ export function filtrarPorBusca<T>(rows: T[], busca: string, texto: (row: T) => 
   if (!q) return rows;
   return rows.filter((r) => texto(r).toLowerCase().includes(q));
 }
+
+/**
+ * Itens da solicitação que ainda existem no catálogo. Item excluído do catálogo
+ * some da exibição (fase 21) — o espelho do servidor já o remove.
+ */
+export function itensNoCatalogo<T extends { codigo: string }>(itens: T[], codigosAtivos: Set<string>): T[] {
+  return itens.filter((i) => codigosAtivos.has(i.codigo));
+}

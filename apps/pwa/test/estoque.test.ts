@@ -4,6 +4,7 @@ import type { RequestRow } from '@logenxoval/contracts';
 import {
   acoesDaSolicitacao,
   filtrarPorBusca,
+  itensNoCatalogo,
   resumoDeEstoque,
   solicitarMarkdown,
   REQUEST_STATUS_LABEL,
@@ -70,6 +71,16 @@ test('acoesDaSolicitacao: liderança marca recebido e não limpa a solicitação
 test('acoesDaSolicitacao: quem não é dono não controla rascunho', () => {
   const outras = acoesDaSolicitacao(req(), 'MECANICO', 'u-outro');
   assert.equal(outras.length, 0);
+});
+
+test('itensNoCatalogo: item excluído do catálogo não aparece na solicitação', () => {
+  const ativos = new Set(['LUVA-40']);
+  const itens = itensNoCatalogo(req({ status: 'RECEBIDA' }).itens, ativos);
+  assert.deepEqual(
+    itens.map((i) => i.codigo),
+    ['LUVA-40'],
+  );
+  assert.equal(itensNoCatalogo(req().itens, new Set()).length, 0);
 });
 
 test('solicitarMarkdown: linhas com itens, status e assinatura (wireframe 10.6)', () => {
