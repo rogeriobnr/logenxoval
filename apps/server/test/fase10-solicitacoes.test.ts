@@ -218,12 +218,32 @@ describe('fase10 - consumíveis e EPIs (solicitações)', () => {
     assert.ok(tipos.includes('SOLICITACAO_RECEBIDA'), `faltou SOLICITACAO_RECEBIDA: ${tipos.join(',')}`);
   });
 
-  it('liderança exclui solicitação → EXCLUIDA + log SOLICITACAO_EXCLUIDA', async () => {
+  it('mecânico (dono) não marca a própria solicitação como recebida → 403', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/deposits/${dep}/requests/${requestId}/transition`,
+      headers: auth(mecToken, DEV_MEC),
+      payload: { operationId: OP('dono-nao-recebe'), para: 'RECEBIDA', assinaturaMatricula: 'F10-MEC' },
+    });
+    assert.equal(res.statusCode, 403, res.body);
+  });
+
+  it('liderança não exclui solicitação de outro → 403', async () => {
     const res = await app.inject({
       method: 'POST',
       url: `/deposits/${dep}/requests/${requestId}/transition`,
       headers: auth(liderToken, DEV_LDR),
-      payload: { operationId: OP('lider-exclui'), para: 'EXCLUIDA', assinaturaMatricula: 'F10-LDR' },
+      payload: { operationId: OP('lider-nao-exclui-alheia'), para: 'EXCLUIDA', assinaturaMatricula: 'F10-LDR' },
+    });
+    assert.equal(res.statusCode, 403, res.body);
+  });
+
+  it('dono exclui a própria solicitação → EXCLUIDA + log SOLICITACAO_EXCLUIDA', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/deposits/${dep}/requests/${requestId}/transition`,
+      headers: auth(mecToken, DEV_MEC),
+      payload: { operationId: OP('dono-exclui'), para: 'EXCLUIDA', assinaturaMatricula: 'F10-MEC' },
     });
     assert.equal(res.statusCode, 200, res.body);
     assert.equal(res.json().solicitacao.status, 'EXCLUIDA');
@@ -235,6 +255,25 @@ describe('fase10 - consumíveis e EPIs (solicitações)', () => {
     });
     const tipos = logs.json().logs.map((l: { tipo: string }) => l.tipo);
     assert.ok(tipos.includes('SOLICITACAO_EXCLUIDA'), `faltou SOLICITACAO_EXCLUIDA: ${tipos.join(',')}`);
+  });
+
+  it('recusa repetir o recebimento de uma solicitação já recebida → 409', async () => {
+    const primeira = await app.inject({
+      method: 'POST',
+      url: `/deposits/${dep}/requests/${reqLider}/transition`,
+      headers: auth(liderToken, DEV_LDR),
+      payload: { operationId: OP('lider-recebe-propria'), para: 'RECEBIDA', assinaturaMatricula: 'F10-LDR' },
+    });
+    assert.equal(primeira.statusCode, 200, primeira.body);
+    assert.equal(primeira.json().solicitacao.status, 'RECEBIDA');
+
+    const repetida = await app.inject({
+      method: 'POST',
+      url: `/deposits/${dep}/requests/${reqLider}/transition`,
+      headers: auth(liderToken, DEV_LDR),
+      payload: { operationId: OP('recebe-de-novo'), para: 'RECEBIDA', assinaturaMatricula: 'F10-LDR' },
+    });
+    assert.equal(repetida.statusCode, 409, repetida.body);
   });
 
   it('lista de solicitações: excluída não aparece; mecânico vê as próprias e líder vê todas', async () => {

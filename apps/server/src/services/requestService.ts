@@ -59,15 +59,18 @@ export async function registrarSolicitacao(
 }
 
 /**
- * Regras de transição (fluxo simplificado de solicitações):
- * - ENVIADA: somente o dono marca como enviada após compartilhar.
- * - RECEBIDA: o dono ou a liderança marca o recebimento (com itens não recebidos).
- * - EXCLUIDA: o dono ou a liderança exclui a solicitação.
+ * Regras de transição (fase 21 — fluxo simplificado):
+ * - ENVIADA: a solicitação já nasce ENVIADA; a transição fica só por compatibilidade
+ *   com solicitações antigas em RASCUNHO;
+ * - RECEBIDA: **somente a liderança** marca o recebimento (conferência da retirada
+ *   no almoxarifado) e só a partir de solicitação enviada;
+ * - EXCLUIDA: **somente o dono** limpa a própria solicitação — cada um limpa o que é
+ *   seu, no próprio menu (a liderança não exclui a solicitação de outro).
  */
-const TRANSICOES: Record<string, { podeDono?: boolean; podeLider?: boolean }> = {
-  ENVIADA: { podeDono: true },
-  RECEBIDA: { podeDono: true, podeLider: true },
-  EXCLUIDA: { podeDono: true, podeLider: true },
+const TRANSICOES: Record<string, { podeDono?: boolean; podeLider?: boolean; de?: RequestStatus[] }> = {
+  ENVIADA: { podeDono: true, de: ['RASCUNHO'] },
+  RECEBIDA: { podeLider: true, de: ['RASCUNHO', 'ENVIADA'] },
+  EXCLUIDA: { podeDono: true, de: ['RASCUNHO', 'ENVIADA', 'RECEBIDA'] },
 };
 
 export async function transicionarSolicitacaoService(
@@ -99,6 +102,9 @@ export async function transicionarSolicitacaoService(
   const autorizado = (regras.podeDono && dono) || (regras.podeLider && lideranca);
   if (!autorizado) {
     throw new AppError('PERMISSAO_NEGADA', 'Você não pode executar esta transição nesta solicitação', 403);
+  }
+  if (regras.de && !regras.de.includes(solicitacao.status)) {
+    throw new AppError('CONFLITO', `Não é possível alterar de ${solicitacao.status} para ${params.para}`, 409);
   }
 
   return transicionarSolicitacao({

@@ -55,8 +55,9 @@ export function SolicitacoesScreen() {
     return <Alert kind="warn">Selecione um depósito ativo para ver as solicitações.</Alert>;
   }
 
+  const minhas = requests.filter((r) => perfil !== 'MECANICO' || r.solicitanteId === usuarioId);
   const visiveis = filtrarPorBusca(
-    requests,
+    minhas,
     busca,
     (r) => `${r.matricula} ${SOLICITACAO_TIPO_LABEL[r.tipo]} ${r.itens.map((i) => i.codigo).join(' ')}`,
   );
@@ -170,7 +171,7 @@ export function SolicitacoesScreen() {
         <div className="list-item">
           <div>
             <div className="list-title">{session.depositoAtivo.nome}</div>
-            <div className="list-sub">Solicitações registradas: {requests.length}</div>
+            <div className="list-sub">Solicitações registradas: {minhas.length}</div>
           </div>
         </div>
       </div>

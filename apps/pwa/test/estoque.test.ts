@@ -26,7 +26,7 @@ function req(over: Partial<RequestRow> = {}): RequestRow {
   };
 }
 
-test('acoesDaSolicitacao: dono controla rascunho/exclusão no fluxo simplificado', () => {
+test('acoesDaSolicitacao: dono limpa a própria solicitação e não marca o recebimento', () => {
   const donoRascunho = acoesDaSolicitacao(req(), 'MECANICO', 'u-dono');
   assert.deepEqual(
     donoRascunho.map((a) => a.para),
@@ -34,28 +34,33 @@ test('acoesDaSolicitacao: dono controla rascunho/exclusão no fluxo simplificado
   );
   assert.equal(donoRascunho[0].danger, true);
 
-  const donoEnviada = acoesDaSolicitacao(
-    req({ status: 'ENVIADA' }),
-    'MECANICO',
-    'u-dono',
-  );
+  const donoEnviada = acoesDaSolicitacao(req({ status: 'ENVIADA' }), 'MECANICO', 'u-dono');
   assert.deepEqual(
     donoEnviada.map((a) => a.para),
-    ['RECEBIDA', 'EXCLUIDA'],
+    ['EXCLUIDA'],
+  );
+
+  const donoRecebida = acoesDaSolicitacao(req({ status: 'RECEBIDA' }), 'MECANICO', 'u-dono');
+  assert.deepEqual(
+    donoRecebida.map((a) => a.para),
+    ['EXCLUIDA'],
   );
 });
 
-test('acoesDaSolicitacao: liderança marca recebida e exclui; mecânico não-dono não vê ações', () => {
+test('acoesDaSolicitacao: liderança marca recebido e não limpa a solicitação de outro', () => {
   const lider = acoesDaSolicitacao(req({ status: 'ENVIADA' }), 'LIDER', 'u-outro');
   assert.deepEqual(
     lider.map((a) => a.para),
-    ['RECEBIDA', 'EXCLUIDA'],
+    ['RECEBIDA'],
   );
 
   const recebida = acoesDaSolicitacao(req({ status: 'RECEBIDA' }), 'LIDER', 'u-outro');
+  assert.deepEqual(recebida, []);
+
+  const liderDono = acoesDaSolicitacao(req({ status: 'ENVIADA' }), 'LIDER', 'u-dono');
   assert.deepEqual(
-    recebida.map((a) => a.para),
-    ['EXCLUIDA'],
+    liderDono.map((a) => a.para),
+    ['RECEBIDA', 'EXCLUIDA'],
   );
 
   const mec = acoesDaSolicitacao(req({ status: 'ENVIADA' }), 'MECANICO', 'u-outro');

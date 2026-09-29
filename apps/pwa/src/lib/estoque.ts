@@ -36,9 +36,9 @@ export type AcaoSolicitacao = {
 
 /**
  * Ações disponíveis por estado da solicitação (fluxo simplificado):
- * o dono compartilha (marca ENVIADA automaticamente após o compartilhamento),
- * a solicitação é marcada como RECEBIDA (com itens não recebidos) e pode ser
- * EXCLUIDA pelo dono ou pela liderança.
+ * a solicitação nasce e é compartilhada já ENVIADA, a **liderança** marca o
+ * recebimento (conferência da retirada no almoxarifado) e **apenas o dono**
+ * limpa a própria solicitação — cada um limpa o que é seu, no próprio menu.
  */
 export function acoesDaSolicitacao(
   req: RequestRow,
@@ -47,25 +47,14 @@ export function acoesDaSolicitacao(
 ): AcaoSolicitacao[] {
   const lideranca = perfil === 'LIDER' || perfil === 'ADMIN';
   const dono = req.solicitanteId === usuarioId;
-  switch (req.status) {
-    case 'RASCUNHO':
-      return dono
-        ? [{ para: 'EXCLUIDA', rotulo: 'Excluir', danger: true }]
-        : [];
-    case 'ENVIADA':
-      return dono || lideranca
-        ? [
-            { para: 'RECEBIDA', rotulo: 'Marcar recebido' },
-            { para: 'EXCLUIDA', rotulo: 'Excluir', danger: true },
-          ]
-        : [];
-    case 'RECEBIDA':
-      return dono || lideranca
-        ? [{ para: 'EXCLUIDA', rotulo: 'Excluir', danger: true }]
-        : [];
-    default:
-      return [];
+  const acoes: AcaoSolicitacao[] = [];
+  if (req.status === 'ENVIADA' && lideranca) {
+    acoes.push({ para: 'RECEBIDA', rotulo: 'Marcar recebido' });
   }
+  if (dono && req.status !== 'EXCLUIDA') {
+    acoes.push({ para: 'EXCLUIDA', rotulo: 'Excluir', danger: true });
+  }
+  return acoes;
 }
 
 /** Markdown copiável/compartilhável da solicitação (wireframe 10.6). */
