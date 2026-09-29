@@ -19,13 +19,14 @@ export interface DepositServiceDeps {
 
 export async function criarDeposito(
   deps: DepositServiceDeps,
-  params: { numero: string; nome: string; matriculaConfirmacao: string; pin?: string },
+  params: { numero: string; nome: string; matriculaConfirmacao: string },
 ): Promise<DepositoRow> {
   if (deps.authUser.matricula !== params.matriculaConfirmacao) {
     throw new AppError('MATRICULA_INVALIDA', 'Matrícula de confirmação inválida', 403);
   }
-  const { verificarPinDoUsuario } = await import('../plugins/auth');
-  await verificarPinDoUsuario(params.pin, deps.app, deps.authUser.sub);
+  // PIN não é exigido para cadastrar depósito: o perfil (líder/admin) já é a
+  // autorização, e o formulário de criação não tem campo de PIN. Antes, um
+  // usuário com PIN definido recebia 403 "PIN obrigatório" sem como enviá-lo.
 
   const dep = await createDeposit({
     numero: params.numero,

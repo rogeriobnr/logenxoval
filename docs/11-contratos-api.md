@@ -34,7 +34,7 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 | Método | Rota | Descrição |
 | ------ | ---- | --------- |
 | GET | `/deposits` | autorizados ao usuário |
-| POST | `/deposits` | criar (gera espelho + log + ponto de restauração) |
+| POST | `/deposits` | criar (gera espelho + log + ponto de restauração) — matrícula obrigatória, **sem PIN** |
 | GET | `/deposits/:depositoId` | detalhe + versão atual |
 | PATCH | `/deposits/:depositoId` | editar (matrícula + PIN se admin) |
 | POST | `/deposits/:depositoId/deactivate` | desativação lógica |

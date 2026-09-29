@@ -39,7 +39,6 @@ export const ACTION_REQUIRES_MATRICULA = new Set<Acao>([
 
 export const ACTION_REQUIRES_PIN = new Set<Acao>([
   'ESTORNO',
-  'CRIAR_DEPOSITO',
   'EDITAR_DEPOSITO',
   'DESATIVAR_DEPOSITO',
   'IMPORTAR_ENXOVAL',
