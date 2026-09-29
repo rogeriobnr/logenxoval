@@ -835,7 +835,6 @@ export interface TransicaoSolicitacaoOfflineArgs {
   para: RequestStatus;
   motivo?: string;
   naoRecebidos?: string[];
-  pin?: string;
   assinaturaMatricula: string;
 }
 
@@ -857,7 +856,6 @@ export async function registrarTransicaoSolicitacaoOffline(args: TransicaoSolici
       para: args.para,
       motivo: args.motivo,
       naoRecebidos: args.naoRecebidos,
-      pin: args.pin,
       assinaturaMatricula: args.assinaturaMatricula,
     }));
   });

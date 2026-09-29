@@ -374,14 +374,14 @@ export const solicitacaoTransitionBodySchema = z.object({
   motivo: z.string().trim().max(300).optional(),
   /** Códigos dos itens que NÃO foram recebidos (usado na transição para RECEBIDA). */
   naoRecebidos: z.array(z.string().trim().min(1).max(40)).max(50).optional(),
-  pin: z.string().optional(),
   assinaturaMatricula: z.string().min(3),
   matriculaConfirmacao: matriculaSchema.optional(),
 });
 
 /**
  * Exclusão de consumível/EPI do catálogo (fase 20): remove o item e seus
- * movimentos e encerra solicitações abertas que o referenciam. Líder/Admin.
+ * movimentos e encerra solicitações abertas que o referenciam.
+ * Qualquer usuário com acesso ao depósito (fase 21) — sem PIN.
  */
 export const estoqueExcluirBodySchema = z.object({
   motivo: z.string().trim().min(5).max(500),

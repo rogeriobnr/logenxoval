@@ -79,7 +79,6 @@ export async function transicionarSolicitacaoService(
     para: RequestStatus;
     motivo?: string;
     naoRecebidos?: string[];
-    pin?: string;
     assinaturaMatricula: string;
     matriculaConfirmacao?: string;
   },

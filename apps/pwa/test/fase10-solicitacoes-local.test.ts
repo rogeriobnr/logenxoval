@@ -133,7 +133,6 @@ test('registrarTransicaoSolicitacaoOffline: atualiza espelho + fila SOLICITACAO_
     para: 'ENVIADA',
     motivo: undefined,
     naoRecebidos: undefined,
-    pin: undefined,
     assinaturaMatricula: 'F10-MEC',
   });
 });
