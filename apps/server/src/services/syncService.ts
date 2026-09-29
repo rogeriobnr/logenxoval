@@ -220,6 +220,7 @@ export async function processarSync(deps: SyncDeps, body: typeof syncBodySchema.
             operationId: op.operationId,
             tipo: p.data.tipo,
             itens: p.data.itens,
+            enviar: p.data.enviar,
             assinaturaMatricula: p.data.assinaturaMatricula,
             matriculaConfirmacao: p.data.matriculaConfirmacao ?? deps.authUser.matricula,
           });

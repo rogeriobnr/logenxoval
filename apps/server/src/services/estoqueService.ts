@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Perfil } from '@logenxoval/contracts';
 import { AppError } from '../lib/errors';
-import { aplicarEntradaEstoque, excluirItemCatalogo } from '../repos/estoqueRepo';
+import { aplicarEntradaEstoque, criarItemCatalogo, editarItemCatalogo, excluirItemCatalogo } from '../repos/estoqueRepo';
 
 export interface EstoqueServiceDeps {
   app: FastifyInstance;
@@ -64,7 +64,75 @@ export async function registrarEntradaEstoque(
   });
 }
 
-/** Exclusão de consumível/EPI do catálogo (fase 20) — Líder/Admin. */
+/** Cadastro de consumível/EPI no catálogo (fase 21) — qualquer usuário. */
+export async function criarItemEstoque(
+  deps: EstoqueServiceDeps,
+  params: {
+    depositoId: string;
+    tipo: 'CONSUMIVEL' | 'EPI';
+    codigo: string;
+    descricao: string;
+    unidade?: string;
+    estoqueMinimo?: number;
+    assinaturaMatricula: string;
+    matriculaConfirmacao?: string;
+  },
+) {
+  validarMatricula(deps.authUser.matricula, params.matriculaConfirmacao);
+  return criarItemCatalogo({
+    depositoId: params.depositoId,
+    perfil: deps.authUser.perfil,
+    usuarioId: deps.authUser.sub,
+    matricula: deps.authUser.matricula,
+    tipo: params.tipo,
+    codigo: params.codigo,
+    descricao: params.descricao,
+    unidade: params.unidade,
+    estoqueMinimo: params.estoqueMinimo,
+    assinaturaMatricula: params.assinaturaMatricula,
+    origem: deps.origem,
+    dispositivo: deps.dispositivo,
+  });
+}
+
+/** Edição de consumível/EPI no catálogo (fase 21) — qualquer usuário. */
+export async function editarItemEstoque(
+  deps: EstoqueServiceDeps,
+  params: {
+    depositoId: string;
+    tipo: 'CONSUMIVEL' | 'EPI';
+    itemId: string;
+    codigo: string;
+    descricao: string;
+    unidade?: string;
+    estoqueMinimo?: number;
+    assinaturaMatricula: string;
+    matriculaConfirmacao?: string;
+  },
+) {
+  validarMatricula(deps.authUser.matricula, params.matriculaConfirmacao);
+  return editarItemCatalogo({
+    depositoId: params.depositoId,
+    perfil: deps.authUser.perfil,
+    usuarioId: deps.authUser.sub,
+    matricula: deps.authUser.matricula,
+    tipo: params.tipo,
+    itemId: params.itemId,
+    codigo: params.codigo,
+    descricao: params.descricao,
+    unidade: params.unidade,
+    estoqueMinimo: params.estoqueMinimo,
+    assinaturaMatricula: params.assinaturaMatricula,
+    origem: deps.origem,
+    dispositivo: deps.dispositivo,
+  });
+}
+
+/**
+ * Exclusão de consumível/EPI do catálogo (fase 20/21) — qualquer usuário com
+ * acesso ao depósito. Remove o item e os movimentos e encerra solicitações
+ * abertas que o referenciam.
+ */
 export async function excluirItemEstoque(
   deps: EstoqueServiceDeps,
   params: {
@@ -77,7 +145,6 @@ export async function excluirItemEstoque(
   },
 ) {
   validarMatricula(deps.authUser.matricula, params.matriculaConfirmacao);
-  exigirNaoMecanico(deps.authUser.perfil);
   return excluirItemCatalogo({
     depositoId: params.depositoId,
     perfil: deps.authUser.perfil,

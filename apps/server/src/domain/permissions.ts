@@ -61,7 +61,7 @@ const PERMISSOES: Record<Perfil, Record<Acao, boolean>> = {
     ESTORNO: false,
     ENTRADA_MATERIAL: false,
     ENTRADA_ESTOQUE: false,
-    EXCLUIR_ITEM_ESTOQUE: false,
+    EXCLUIR_ITEM_ESTOQUE: true,
     CRIAR_DEPOSITO: false,
     EDITAR_DEPOSITO: false,
     DESATIVAR_DEPOSITO: false,

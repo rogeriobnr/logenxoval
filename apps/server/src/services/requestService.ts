@@ -37,6 +37,7 @@ export async function registrarSolicitacao(
     operationId: string;
     tipo: SolicitacaoTipo;
     itens: Array<{ qtd: number; codigo: string; descricao?: string }>;
+    enviar?: boolean;
     assinaturaMatricula: string;
     matriculaConfirmacao?: string;
   },
@@ -50,6 +51,7 @@ export async function registrarSolicitacao(
     operationId: params.operationId,
     tipo: params.tipo,
     itens: normalizarItens(params.itens),
+    enviar: params.enviar,
     assinaturaMatricula: params.assinaturaMatricula,
     origemMov: deps.origem,
     dispositivo: deps.dispositivo,

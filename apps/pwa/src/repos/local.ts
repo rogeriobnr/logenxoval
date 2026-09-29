@@ -792,13 +792,15 @@ export interface SolicitacaoOfflineArgs {
   itens: Array<{ qtd: number; codigo: string; descricao: string }>;
   solicitanteId: string;
   matricula: string;
+  /** Fase 21: true envia direto (status ENVIADA — sem etapa RASCUNHO). */
+  enviar?: boolean;
   assinaturaMatricula: string;
 }
 
 /**
  * Criação otimista de solicitação offline: registra a linha local (id local:...)
- * e enfileira o envio (fase 10 / docs 12.6). O status permanece RASCUNHO até o
- * flush; a transição era feita pelo usuário antes da sincronização.
+ * e enfileira o envio (fase 10 / docs 12.6). Com `enviar: true` (fase 21) a
+ * solicitação já nasce ENVIADA e o envio é imediato na sincronização.
  */
 export async function registrarSolicitacaoOffline(args: SolicitacaoOfflineArgs): Promise<void> {
   const criadoEm = new Date().toISOString();
@@ -809,7 +811,7 @@ export async function registrarSolicitacaoOffline(args: SolicitacaoOfflineArgs):
     tipo: args.tipo,
     solicitanteId: args.solicitanteId,
     matricula: args.matricula,
-    status: 'RASCUNHO',
+    status: args.enviar ? 'ENVIADA' : 'RASCUNHO',
     dataEm: criadoEm,
     itens: args.itens,
   };
@@ -820,6 +822,7 @@ export async function registrarSolicitacaoOffline(args: SolicitacaoOfflineArgs):
       matricula: args.matricula,
       tipo: args.tipo,
       itens: args.itens,
+      ...(args.enviar ? { enviar: args.enviar } : {}),
       assinaturaMatricula: args.assinaturaMatricula,
     }));
   });

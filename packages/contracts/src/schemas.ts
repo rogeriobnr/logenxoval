@@ -356,6 +356,8 @@ export const solicitacaoCreateBodySchema = z.object({
   operationId,
   tipo: z.enum([SOLICITACAO_TIPO.CONSUMIVEL, SOLICITACAO_TIPO.EPI]),
   itens: z.array(requestItemSchema).min(1).max(50),
+  /** Fase 21: true envia a solicitação já em ENVIADA (sem etapa RASCUNHO). Padrão: false. */
+  enviar: z.boolean().optional(),
   assinaturaMatricula: z.string().min(3),
   matriculaConfirmacao: matriculaSchema.optional(),
 });
@@ -383,6 +385,32 @@ export const solicitacaoTransitionBodySchema = z.object({
  */
 export const estoqueExcluirBodySchema = z.object({
   motivo: z.string().trim().min(5).max(500),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
+/**
+ * Cadastro (fase 21) de consumível/EPI no catálogo: não movimenta estoque,
+ * apenas cria o item com os metadados. Qualquer usuário com acesso ao depósito.
+ */
+export const estoqueItemCreateBodySchema = z.object({
+  codigo: z.string().trim().min(1).max(40),
+  descricao: z.string().trim().min(1).max(200),
+  unidade: z.string().trim().max(20).optional(),
+  estoqueMinimo: z.number().int().min(0).optional(),
+  assinaturaMatricula: z.string().min(3),
+  matriculaConfirmacao: matriculaSchema.optional(),
+});
+
+/**
+ * Edição (fase 21) de consumível/EPI no catálogo: atualiza todos os metadados
+ * (código é editável). Qualquer usuário com acesso ao depósito.
+ */
+export const estoqueItemUpdateBodySchema = z.object({
+  codigo: z.string().trim().min(1).max(40),
+  descricao: z.string().trim().min(1).max(200),
+  unidade: z.string().trim().max(20).optional(),
+  estoqueMinimo: z.number().int().min(0).optional(),
   assinaturaMatricula: z.string().min(3),
   matriculaConfirmacao: matriculaSchema.optional(),
 });

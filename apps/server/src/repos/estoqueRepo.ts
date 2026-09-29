@@ -259,6 +259,168 @@ export async function aplicarEntradaEstoque(params: {
   });
 }
 
+export interface ObservacaoCriarItem {
+  itemId: string;
+  codigo: string;
+  descricao: string;
+  criado: boolean;
+}
+
+/**
+ * Fase 21: cadastro direto de consumível/EPI no catálogo (sem movimentar
+ * estoque). Qualquer usuário com acesso ao depósito. Código é único por
+ * depósito e tipo (409 se já existir). Auditoria CRIACAO_ITEM_ESTOQUE.
+ */
+export async function criarItemCatalogo(params: {
+  depositoId: string;
+  perfil: string;
+  usuarioId: string;
+  matricula: string;
+  tipo: 'CONSUMIVEL' | 'EPI';
+  codigo: string;
+  descricao: string;
+  unidade?: string;
+  estoqueMinimo?: number;
+  assinaturaMatricula: string;
+  origem: 'ONLINE' | 'OFFLINE';
+  dispositivo: string;
+}): Promise<ObservacaoCriarItem> {
+  const tabela = params.tipo === 'CONSUMIVEL' ? 'consumables' : 'ppe_items';
+  const unidade = params.tipo === 'CONSUMIVEL' ? (params.unidade?.trim() || 'unidade') : 'unidade';
+  const estoqueMinimo = params.estoqueMinimo ?? 0;
+
+  return withDepositoContext(params.depositoId, params.perfil, async (client) => {
+    const dep = await client.query('SELECT id, status FROM deposits WHERE id = $1', [params.depositoId]);
+    const depRow = rowsOf(dep)[0];
+    if (!depRow) throw new AppError('NAO_ENCONTRADO', 'Depósito não encontrado', 404);
+    if (depRow.status === 'INATIVO') {
+      throw new AppError('OPERACAO_NEGADA', 'Depósito inativo não aceita cadastros', 409);
+    }
+
+    const find = await client.query(
+      `SELECT id FROM ${tabela} WHERE deposito_id = $1 AND codigo = $2`,
+      [params.depositoId, params.codigo],
+    );
+    if (rowsOf(find)[0]) {
+      throw new AppError('CONFLITO', 'Já existe um item com este código no catálogo', 409);
+    }
+
+    const itemId = newId();
+    await client.query(
+      `INSERT INTO ${tabela}
+        (id, deposito_id, codigo, descricao, unidade, quantidade, estoque_atual, estoque_minimo)
+       VALUES ($1,$2,$3,$4,$5,0,0,$6)`,
+      [itemId, params.depositoId, params.codigo, params.descricao, unidade, estoqueMinimo],
+    );
+
+    await insertAuditLogWith(client, {
+      tipo: 'CRIACAO_ITEM_ESTOQUE',
+      usuarioId: params.usuarioId,
+      matricula: params.matricula,
+      depositoId: params.depositoId,
+      entidade: tabela,
+      operacaoId: itemId,
+      estadoPosterior: {
+        itemId,
+        codigo: params.codigo,
+        descricao: params.descricao,
+        tipo: params.tipo,
+        unidade,
+        estoqueMinimo,
+      },
+      origem: params.origem,
+      dispositivo: params.dispositivo,
+    });
+
+    return { itemId, codigo: params.codigo, descricao: params.descricao, criado: true };
+  });
+}
+
+export interface ObservacaoEditarItem {
+  itemId: string;
+  codigo: string;
+  descricao: string;
+}
+
+/**
+ * Fase 21: edição de consumível/EPI no catálogo (código é editável). O código
+ * novo deve ser único no depósito/tipo (409 se conflitar com outro item).
+ * Auditoria EDICAO_ITEM_ESTOQUE com estado anterior/posterior.
+ */
+export async function editarItemCatalogo(params: {
+  depositoId: string;
+  perfil: string;
+  usuarioId: string;
+  matricula: string;
+  tipo: 'CONSUMIVEL' | 'EPI';
+  itemId: string;
+  codigo: string;
+  descricao: string;
+  unidade?: string;
+  estoqueMinimo?: number;
+  assinaturaMatricula: string;
+  origem: 'ONLINE' | 'OFFLINE';
+  dispositivo: string;
+}): Promise<ObservacaoEditarItem> {
+  const tabela = params.tipo === 'CONSUMIVEL' ? 'consumables' : 'ppe_items';
+
+  return withDepositoContext(params.depositoId, params.perfil, async (client) => {
+    const found = await client.query(
+      `SELECT * FROM ${tabela} WHERE id = $1 AND deposito_id = $2 FOR UPDATE`,
+      [params.itemId, params.depositoId],
+    );
+    const item = rowsOf(found)[0];
+    if (!item) throw new AppError('NAO_ENCONTRADO', 'Item não encontrado no catálogo', 404);
+
+    const antes = {
+      codigo: item.codigo as string,
+      descricao: item.descricao as string,
+      unidade: item.unidade as string,
+      estoqueMinimo: Number(item.estoque_minimo),
+    };
+
+    if (params.codigo !== antes.codigo) {
+      const duplo = await client.query(
+        `SELECT id FROM ${tabela} WHERE deposito_id = $1 AND codigo = $2 AND id <> $3`,
+        [params.depositoId, params.codigo, params.itemId],
+      );
+      if (rowsOf(duplo)[0]) {
+        throw new AppError('CONFLITO', 'Já existe outro item com este código no catálogo', 409);
+      }
+    }
+
+    const unidade = params.tipo === 'CONSUMIVEL' ? (params.unidade?.trim() || 'unidade') : 'unidade';
+    const estoqueMinimo = params.estoqueMinimo ?? antes.estoqueMinimo;
+    await client.query(
+      `UPDATE ${tabela}
+         SET codigo = $2, descricao = $3, unidade = $4, estoque_minimo = $5
+       WHERE id = $1`,
+      [params.itemId, params.codigo, params.descricao, unidade, estoqueMinimo],
+    );
+
+    await insertAuditLogWith(client, {
+      tipo: 'EDICAO_ITEM_ESTOQUE',
+      usuarioId: params.usuarioId,
+      matricula: params.matricula,
+      depositoId: params.depositoId,
+      entidade: tabela,
+      operacaoId: params.itemId,
+      estadoAnterior: antes,
+      estadoPosterior: {
+        codigo: params.codigo,
+        descricao: params.descricao,
+        unidade,
+        estoqueMinimo,
+        tipo: params.tipo,
+      },
+      origem: params.origem,
+      dispositivo: params.dispositivo,
+    });
+
+    return { itemId: params.itemId, codigo: params.codigo, descricao: params.descricao };
+  });
+}
+
 export interface ObservacaoExclusaoEstoque {
   itemId: string;
   codigo: string;

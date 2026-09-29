@@ -1,5 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { estoqueEntradaBodySchema, estoqueExcluirBodySchema, solicitacaoCreateBodySchema, solicitacaoTransitionBodySchema } from '@logenxoval/contracts';
+import {
+  estoqueEntradaBodySchema,
+  estoqueExcluirBodySchema,
+  estoqueItemCreateBodySchema,
+  estoqueItemUpdateBodySchema,
+  solicitacaoCreateBodySchema,
+  solicitacaoTransitionBodySchema,
+} from '@logenxoval/contracts';
 import { authenticate, requireAcao, requireDepositoAcesso } from '../plugins/auth';
 import { validateBody } from '../lib/validator';
 import { listarConsumiveis, listarMovimentosConsumivel, listarMovimentosPpe, listarPpeItems } from '../repos/estoqueRepo';
@@ -46,6 +53,77 @@ export async function registerEstoqueRoutes(app: FastifyInstance): Promise<void>
     );
     return { solicitacoes };
   });
+
+  app.post(
+    '/deposits/:depositoId/estoque/:tipo',
+    {
+      preHandler: prehandler,
+      ...validateBody(estoqueItemCreateBodySchema),
+    },
+    async (req, reply) => {
+      const body = req.body as typeof estoqueItemCreateBodySchema._type;
+      const { depositoId, tipo } = req.params as { depositoId: string; tipo: string };
+      if (tipo !== 'CONSUMIVEL' && tipo !== 'EPI') {
+        reply.status(400).send({ error: { code: 'VALIDATION_FAILED', message: 'tipo deve ser CONSUMIVEL ou EPI' } });
+        return;
+      }
+      const res = await estoqueService.criarItemEstoque(
+        {
+          app,
+          authUser: req.authUser!,
+          dispositivo: (req.headers['x-device-id'] as string) ?? 'api',
+          origem: 'ONLINE',
+        },
+        {
+          depositoId,
+          tipo,
+          codigo: body.codigo,
+          descricao: body.descricao,
+          unidade: body.unidade,
+          estoqueMinimo: body.estoqueMinimo,
+          assinaturaMatricula: body.assinaturaMatricula,
+          matriculaConfirmacao: body.matriculaConfirmacao,
+        },
+      );
+      return { item: { itemId: res.itemId, codigo: res.codigo, descricao: res.descricao } };
+    },
+  );
+
+  app.put(
+    '/deposits/:depositoId/estoque/:tipo/:itemId',
+    {
+      preHandler: prehandler,
+      ...validateBody(estoqueItemUpdateBodySchema),
+    },
+    async (req, reply) => {
+      const body = req.body as typeof estoqueItemUpdateBodySchema._type;
+      const { depositoId, tipo, itemId } = req.params as { depositoId: string; tipo: string; itemId: string };
+      if (tipo !== 'CONSUMIVEL' && tipo !== 'EPI') {
+        reply.status(400).send({ error: { code: 'VALIDATION_FAILED', message: 'tipo deve ser CONSUMIVEL ou EPI' } });
+        return;
+      }
+      const res = await estoqueService.editarItemEstoque(
+        {
+          app,
+          authUser: req.authUser!,
+          dispositivo: (req.headers['x-device-id'] as string) ?? 'api',
+          origem: 'ONLINE',
+        },
+        {
+          depositoId,
+          tipo,
+          itemId,
+          codigo: body.codigo,
+          descricao: body.descricao,
+          unidade: body.unidade,
+          estoqueMinimo: body.estoqueMinimo,
+          assinaturaMatricula: body.assinaturaMatricula,
+          matriculaConfirmacao: body.matriculaConfirmacao,
+        },
+      );
+      return { item: { itemId: res.itemId, codigo: res.codigo, descricao: res.descricao } };
+    },
+  );
 
   app.post(
     '/deposits/:depositoId/estoque/:tipo/:itemId/excluir',
@@ -136,6 +214,7 @@ export async function registerEstoqueRoutes(app: FastifyInstance): Promise<void>
           ...body,
           depositoId,
           operationId: body.operationId,
+          enviar: body.enviar,
         },
       );
       return { solicitacao: res.solicitacao, jaProcessada: res.jaProcessada };

@@ -163,14 +163,35 @@ describe('fase20 - conferência conclui na hora + exclusão de consumível/EPI',
   describe('exclusão de consumível/EPI do catálogo', () => {
     let itemId: string;
 
-    it('mecânico não pode excluir (403)', async () => {
+    it('qualquer usuário (mecânico incluído) pode excluir item do catálogo', async () => {
+      const ent = await app.inject({
+        method: 'POST',
+        url: `/deposits/${dep}/estoque/entrada`,
+        headers: auth(liderToken, DEV_LIDER),
+        payload: {
+          operationId: 'op-f20-ent-mec',
+          tipo: 'CONSUMIVEL',
+          codigo: 'MEC-DEL',
+          descricao: 'Item que o mecânico vai excluir',
+          quantidade: 1,
+          origem: 'ONLINE',
+          dispositivo: 'test-pwa',
+          dataHora: new Date().toISOString(),
+          assinaturaMatricula: 'F20-LDR',
+          matriculaConfirmacao: 'F20-LDR',
+        },
+      });
+      assert.equal(ent.statusCode, 200, ent.body);
+      const itemMec = ent.json().entrada.itemId as string;
+
       const res = await app.inject({
         method: 'POST',
-        url: `/deposits/${dep}/estoque/CONSUMIVEL/qualquer/excluir`,
+        url: `/deposits/${dep}/estoque/CONSUMIVEL/${itemMec}/excluir`,
         headers: auth(mecToken, DEV_MEC),
-        payload: { motivo: 'Item lançado por engano', assinaturaMatricula: 'F20-MEC' },
+        payload: { motivo: 'Mecânico também pode excluir (fase 21)', assinaturaMatricula: 'F20-MEC', matriculaConfirmacao: 'F20-MEC' },
       });
-      assert.equal(res.statusCode, 403, res.body);
+      assert.equal(res.statusCode, 200, res.body);
+      assert.equal(res.json().excluido, true);
     });
 
     it('liderança cadastra consumível + solicitação aberta e exclui o item do catálogo', async () => {

@@ -43,6 +43,7 @@
 | 18 | Solicitações simplificadas (RASCUNHO→ENVIADA→RECEBIDA) e telas dedicadas | `feat(fase18): fluxo de solicitações simplificado e telas dedicadas` | ✅ |
 | 19 | Fluxo de reposição completo: `GET /divergences` + espelho multi-dispositivo + card de reposições pendentes no dashboard | `feat(fase19): fluxo de reposição e lista de divergências` | ✅ |
 | 20 | Conferência conclui na hora (registra → CONCLUIDA + divergências REPOSICAO/CONFERENCIA automáticas) e exclusão de consumível/EPI do catálogo | `feat(fase20): conferência conclui na hora + exclusão de consumíveis/EPIs` | ✅ |
+| 21 | CRUD de consumíveis/EPIs (cadastrar/editar/excluir/listar por qualquer usuário), telas dedicadas (`/consumiveis`, `/epis`, `/solicitacoes`) e solicitação por marcação de itens já `ENVIADA` | `feat(fase21): CRUD de consumíveis/EPIs e solicitações remodeladas` | ✅ |
 
 ## Critério de aceite de cada fase
 

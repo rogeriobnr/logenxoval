@@ -108,7 +108,7 @@ export class ApiClient {
     return b?.error?.message ?? 'Erro inesperado';
   }
 
-  async request<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
+  async request<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T> {
     const tokens = this.opts.getTokens();
     let res = await this.raw(method, path, body, tokens?.access);
 

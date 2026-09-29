@@ -14,17 +14,13 @@ import { ConferenciaScreen } from './screens/ConferenciaScreen';
 import { PecasScreen } from './screens/PecasScreen';
 import { LogsScreen } from './screens/LogsScreen';
 import { OcrReviewScreen } from './screens/OcrReviewScreen';
-import { EstoqueScreen, type TabEstoque } from './screens/EstoqueScreen';
+import { ConsumiveisScreen } from './screens/ConsumiveisScreen';
+import { EpiScreen } from './screens/EpiScreen';
+import { SolicitacoesScreen } from './screens/SolicitacoesScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { ChangePasswordScreen } from './screens/ChangePasswordScreen';
 import { ConfiguracoesScreen } from './screens/ConfiguracoesScreen';
 import { Alert } from './components/ui';
-
-const ABA_ESTOQUE: Partial<Record<string, TabEstoque>> = {
-  '/consumiveis': 'consumiveis',
-  '/epis': 'epis',
-  '/solicitacoes': 'solicitacoes',
-};
 
 export function App() {
   const { status, session, logout, touchActivity, online, api, deviceId } = useAuth();
@@ -114,8 +110,12 @@ export function App() {
     content = <LogsScreen />;
   } else if (route === '/revisao-ocr') {
     content = <OcrReviewScreen />;
-  } else if (ABA_ESTOQUE[route]) {
-    content = <EstoqueScreen inicial={ABA_ESTOQUE[route]} />;
+  } else if (route === '/consumiveis') {
+    content = <ConsumiveisScreen />;
+  } else if (route === '/epis') {
+    content = <EpiScreen />;
+  } else if (route === '/solicitacoes') {
+    content = <SolicitacoesScreen />;
   } else if (route === '/relatorios') {
     content = <ReportsScreen />;
   } else if (route === '/senha') {

@@ -120,19 +120,26 @@ Modal (toque longo):
 
 ---
 
-## 10.6 Consumíveis / EPI (solicitação)
+## 10.6 Consumíveis / EPI / Solicitações (fase 21)
+
+Menu de catálogo: telas dedicadas **Consumíveis**, **EPIs** e **Solicitações**. Qualquer usuário com acesso ao depósito gerencia o catálogo; a solicitação é feita marcando os itens e enviando.
 
 ```
 ┌────────────────────────────┐
 │ Consumíveis  Dep 3216      │
-│ [Escolher itens p/ solicitar] │
+│ [+ Novo]  [Buscar…]        │
+│ • Luvas descartáveis  min 40│
+│   Estoque 12  ✏ Editar 🗑  │
+├────────────────────────────┤
+│ [✓ Solicitar] → marca itens │
 │ ✓ Luvas descartáveis  qtd[40]│
 │   Adesivo isolante  qtd[2]  │
-├────────────────────────────┤
-│ ✏ Editar   ⧉ Copiar  ⇗ Share │
+│        [ Enviar solicitação ]│
 └────────────────────────────┘
-Markdown gerado e copiável (navigator.share quando disponível).
 ```
+Cadastro/edição cria/atualiza o item direto no catálogo (auditoria
+`CRIACAO_ITEM_ESTOQUE`/`EDICAO_ITEM_ESTOQUE`); exclusão pede motivo +
+matrícula. O envio cria a solicitação já `ENVIADA`.
 
 ---
 

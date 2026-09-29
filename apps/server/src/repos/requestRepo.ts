@@ -31,14 +31,17 @@ export interface CriarSolicitacaoParams {
   operationId: string;
   tipo: SolicitacaoTipo;
   itens: Array<{ qtd: number; descricao: string; codigo: string }>;
+  /** Fase 21: true cria a solicitação já em ENVIADA (sem etapa RASCUNHO). */
+  enviar?: boolean;
   assinaturaMatricula: string;
   origemMov: 'ONLINE' | 'OFFLINE';
   dispositivo: string;
 }
 
 /**
- * Cria uma solicitação de consumível/EPI em RASCUNHO com auditoria.
- * Idempotente por operationId (docs 7.6).
+ * Cria uma solicitação de consumível/EPI com auditoria. Padrão: RASCUNHO.
+ * Com `enviar: true` (fase 21) a solicitação nasce ENVIADA e o envio também é
+ * auditado (SOLICITACAO_ENVIADA). Idempotente por operationId (docs 7.6).
  */
 export async function criarSolicitacao(
   params: CriarSolicitacaoParams,
@@ -55,10 +58,11 @@ export async function criarSolicitacao(
 
     const id = newId();
     const itens = params.itens.map((i) => ({ qtd: i.qtd, descricao: i.descricao, codigo: i.codigo }));
+    const statusInicial: RequestStatus = params.enviar ? 'ENVIADA' : 'RASCUNHO';
     await client.query(
       `INSERT INTO requests (id, deposito_id, tipo, solicitante_id, matricula, status, data_em, itens)
-       VALUES ($1,$2,$3,$4,$5,'RASCUNHO',now(),$6::jsonb)`,
-      [id, params.depositoId, params.tipo, params.usuarioId, params.matricula, JSON.stringify(itens)],
+       VALUES ($1,$2,$3,$4,$5,$6,now(),$7::jsonb)`,
+      [id, params.depositoId, params.tipo, params.usuarioId, params.matricula, statusInicial, JSON.stringify(itens)],
     );
 
     await insertAuditLogWith(client, {
@@ -69,11 +73,27 @@ export async function criarSolicitacao(
       entidade: 'requests',
       operacaoId: params.operationId,
       estadoAnterior: undefined,
-      estadoPosterior: { requestId: id, tipo: params.tipo, itens },
+      estadoPosterior: { requestId: id, tipo: params.tipo, itens, status: statusInicial },
       motivo: undefined,
       origem: params.origemMov,
       dispositivo: params.dispositivo,
     });
+
+    if (params.enviar) {
+      await insertAuditLogWith(client, {
+        tipo: 'SOLICITACAO_ENVIADA',
+        usuarioId: params.usuarioId,
+        matricula: params.matricula,
+        depositoId: params.depositoId,
+        entidade: 'requests',
+        operacaoId: params.operationId,
+        estadoAnterior: { requestId: id, status: 'RASCUNHO' },
+        estadoPosterior: { requestId: id, status: 'ENVIADA' },
+        motivo: undefined,
+        origem: params.origemMov,
+        dispositivo: params.dispositivo,
+      });
+    }
 
     await client.query(
       `INSERT INTO processed_operations (operation_id, entidade, acao, payload_hash, processado_em, resultado)
@@ -81,7 +101,7 @@ export async function criarSolicitacao(
       [
         params.operationId,
         sha256Hex(JSON.stringify({ operationId: params.operationId, tipo: params.tipo, itens })),
-        JSON.stringify({ id, status: 'RASCUNHO', tipo: params.tipo }),
+        JSON.stringify({ id, status: statusInicial, tipo: params.tipo }),
       ],
     );
 

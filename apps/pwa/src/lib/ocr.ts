@@ -186,7 +186,7 @@ export function tamanhoDeDocumento(file: File): { tamanho: number; mime: string;
 }
 
 export interface ApiLike {
-  request<T>(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T>;
+  request<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<T>;
 }
 
 /** Converte o arquivo para base64 (sem o prefixo data:) para enviar ao servidor. */

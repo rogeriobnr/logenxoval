@@ -69,9 +69,11 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 | GET | `/deposits/:id/ppe` | lista EPIs |
 | GET | `/deposits/:id/ppe/:p/movements` | movimentos do EPI |
 | GET | `/deposits/:id/requests` | solicitações (mecânico vê as próprias; líder vê todas) |
-| POST | `/deposits/:id/requests` | criar solicitação (`{operationId, tipo: CONSUMIVEL\|EPI, itens[], assinaturaMatricula}`) |
+| POST | `/deposits/:id/requests` | criar solicitação (`{operationId, tipo: CONSUMIVEL\|EPI, itens[], enviar?, assinaturaMatricula}`) — `enviar: true` (fase 21) já nasce `ENVIADA`; sem `enviar` continua `RASCUNHO` (backcompat) |
 | POST | `/deposits/:id/requests/:rid/transition` | transição de status (`{operationId, para: ENVIADA\|RECEBIDA\|EXCLUIDA, naoRecebidos?, motivo?, assinaturaMatricula}`) — RECEBIDA aceita `naoRecebidos[]` (códigos não recebidos) |
-| POST | `/deposits/:id/estoque/:tipo/:itemId/excluir` | excluir consumível/EPI do catálogo (`{motivo, assinaturaMatricula, matriculaConfirmacao?}`) — líder/admin; remove item + movimentos, encerra solicitações abertas (RASCUNHO/ENVIADA) que referenciam o código; auditoria `EXCLUSAO_ESTOQUE` + `SOLICITACAO_EXCLUIDA` |
+| POST | `/deposits/:id/estoque/:tipo` | cadastrar consumível/EPI direto no catálogo (`{codigo, descricao, unidade?, estoqueMinimo?, assinaturaMatricula, matriculaConfirmacao?}`) — qualquer usuário com acesso; código duplicado → 409; auditoria `CRIACAO_ITEM_ESTOQUE` (fase 21) |
+| PUT | `/deposits/:id/estoque/:tipo/:itemId` | editar consumível/EPI (mesmo payload; `codigo` editável) — qualquer usuário; código já existente → 409; item inexistente → 404; auditoria `EDICAO_ITEM_ESTOQUE` (fase 21) |
+| POST | `/deposits/:id/estoque/:tipo/:itemId/excluir` | excluir consumível/EPI do catálogo (`{motivo, assinaturaMatricula, matriculaConfirmacao?}`) — qualquer usuário com acesso (mecânico incluído, fase 21); remove item + movimentos, encerra solicitações abertas (RASCUNHO/ENVIADA) que referenciam o código; auditoria `EXCLUSAO_ESTOQUE` + `SOLICITACAO_EXCLUIDA` |
 
 ### Conferências
 | Método | Rota | Descrição |
