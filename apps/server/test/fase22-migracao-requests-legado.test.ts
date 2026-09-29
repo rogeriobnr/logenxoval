@@ -33,8 +33,11 @@ describe('migração 009 — status legados de solicitação normalizados', () =
       `INSERT INTO deposits (id, numero, nome, criado_por) VALUES ($1, '4902', 'Legado', 'F22')`,
       [DEP],
     );
-    // simula o banco que ainda estava no fluxo antigo (sem o CHECK da fase 18)
+    // simula o banco que ainda estava no fluxo antigo: com o CHECK do 001_init
+    // (que NÃO aceita RECEBIDA/EXCLUIDA) e solicitações nos status legados
     await getPool().query('ALTER TABLE requests DROP CONSTRAINT IF EXISTS requests_status_check');
+    await getPool().query(`ALTER TABLE requests ADD CONSTRAINT requests_status_check CHECK (status IN
+      ('RASCUNHO','PRONTA_PARA_ENVIO','ENVIADA','RECEBIDA_PELA_LIDERANCA','APROVADA','ATENDIDA','CANCELADA'))`);
     for (const [id, status] of LEGADOS) {
       await getPool().query(
         `INSERT INTO requests (id, deposito_id, tipo, solicitante_id, matricula, status)
