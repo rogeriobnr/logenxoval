@@ -116,6 +116,7 @@ id, depositoId, solicitanteId, matricula, status
 (RASCUNHO|ENVIADA|RECEBIDA|EXCLUIDA),
 dataEm, itens (json: [{qtd,descricao,codigo,recebido?}])
 ```
+- Fluxo simplificado (fase 18). A migração `009_requests_status_simplificado.sql` normaliza o que sobrou do fluxo antigo antes de estreitar o `CHECK`: `PRONTA_PARA_ENVIO→ENVIADA`, `RECEBIDA_PELA_LIDERANCA|APROVADA|ATENDIDA→RECEBIDA`, `CANCELADA→EXCLUIDA`.
 
 ### inspections (CONFERÊNCIAS)
 ```

@@ -81,6 +81,35 @@ O build executa `build:cloud`:
 
 4. **Vercel anexa o grupo de captura do rewrite como query** (`/auth/login?path=login`) — inofensivo; o Fastify ignora query nas rotas.
 
+5. **`build:cloud` roda `migrate:cloud`: migração que viola dado existente QUEBRA o deploy** (2026-09-29 — as fases 18 a 21 ficaram com `readyState: ERROR` e a produção continuou servindo a fase16). A causa foi a `009_requests_status_simplificado.sql`: o `CHECK` novo (`RASCUNHO|ENVIADA|RECEBIDA|EXCLUIDA`) era violado por solicitações do fluxo antigo e a transação da migração abortava. **Regra: toda migração que estreita um `CHECK` normaliza antes as linhas legadas** — a 009 passou a mapear `PRONTA_PARA_ENVIO→ENVIADA`, `RECEBIDA_PELA_LIDERANCA|APROVADA|ATENDIDA→RECEBIDA`, `CANCELADA→EXCLUIDA` (regressão em `apps/server/test/fase22-migracao-requests-legado.test.ts`).
+
+6. **Como descobrir que o deploy quebrou** — `GET /health` continua 200 na versão antiga, então não basta:
+
+   ```powershell
+   $h = @{ Authorization = "Bearer $env:VERCEL_TOKEN" }
+   # a) estado dos deploys + commit de cada um
+   (Invoke-WebRequest "https://api.vercel.com/v6/deployments?limit=8" -Headers $h).Content |
+     ConvertFrom-Json | Select-Object -ExpandProperty deployments |
+     ForEach-Object { "{0,-6} {1,-11} {2}" -f $_.readyState, $_.target, $_.meta.githubCommitSha.Substring(0,7) }
+   # b) log do build que falhou
+   $uid = (Invoke-WebRequest "https://api.vercel.com/v6/deployments?limit=1" -Headers $h).Content |
+     ConvertFrom-Json | Select-Object -ExpandProperty deployments | Select-Object -ExpandProperty uid
+   (Invoke-WebRequest "https://api.vercel.com/v2/deployments/$uid/events?builds=1&logs=1&limit=400" -Headers $h).Content |
+     ConvertFrom-Json | ForEach-Object { $_.payload.text }
+   ```
+
+   > Token `vcp_…` (CLI/equipe) devolve `404` em `/v2/user` — o `vercel whoami` falha, mas `/v6/deployments` e `/v2/deployments/{uid}/events` respondem 200.
+
+7. **Como confirmar que a produção está na versão nova** (o bundle minificado não tem version string): procurar no JS servido um marcador da fase e checar uma rota nova.
+
+   ```powershell
+   $html = (Invoke-WebRequest "https://logenxoval.vercel.app/index.html?cb=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())").Content
+   $asset = [regex]::Match($html, 'assets/index-[^"]+\.js').Value
+   Invoke-WebRequest "https://logenxoval.vercel.app/$asset" -OutFile dep.js
+   Select-String -Path dep.js -Pattern 'CRIACAO_ITEM_ESTOQUE'   # 0 = produção desatualizada
+   ```
+
+
 ## 17.6 Pós-deploy (verificação — executado e passando)
 
 ```
