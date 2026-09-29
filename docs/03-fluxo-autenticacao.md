@@ -41,7 +41,7 @@
 ## 3.6 Confirmação crítica
 
 - Operações críticas (baixa, publicação de versão, restauração, conversão, estorno, correção, edição de depósito) exigem **digitação da própria matrícula**.
-- Essas ações exigem ainda o **PIN do próprio usuário logado** quando ele tiver PIN definido (`users.pin_hash`). Não há PIN global: cada usuário tem o seu (definido no cadastro, trocado em Configurações → Meu PIN ou redefinido pelo admin na tela Usuários).
+- Essas ações exigem ainda o **PIN do próprio usuário logado** quando ele tiver PIN definido (`users.pin_hash`). Não há PIN global: cada usuário tem o seu (definido no cadastro, trocado na tela **Acesso** ou redefinido pelo admin na tela Usuários).
 - A matrícula digitada é hasheada e gravada em `assinaturaMatricula` no movimento/log.
 
 ## 3.7 Recuperação de senha
@@ -50,6 +50,15 @@
 - Se o e-mail existe, o servidor cria um token de uso único (hash SHA-256 em `password_resets`, expira em 30 min) e envia o link `${APP_URL}/?recuperar=<token>` por e-mail (**SMTP via env** `EMAIL_HOST`/`EMAIL_USER`/`EMAIL_PASS`; sem SMTP configurado, o link vai para o log do servidor, útil em dev).
 - `POST /auth/reset-password` com `{ token, novaSenha }` redefine a senha (bcrypt), revoga sessões do usuário e o token não pode ser reutilizado.
 - O PWA detecta `?recuperar=` na URL e mostra a tela de redefinição sem login.
+
+## 3.7.1 Recuperação de PIN
+
+O PIN confirma ações sensíveis e, como a troca de PIN exige o PIN atual, quem o esquece fica travado. A recuperação por e-mail resolve isso (fase 22), no mesmo padrão da senha:
+
+- `POST /auth/forgot-pin` com o e-mail cadastrado; resposta sempre 200 (não revela contas). Cria token de uso único (hash SHA-256 em `pin_resets`, expira em 30 min) e envia `${APP_URL}/?recuperar-pin=<token>`.
+- `POST /auth/reset-pin` com `{ token, novoPin }` troca só o PIN (bcrypt, 4 a 6 dígitos) e registra auditoria. **Não** revoga sessões nem o espelho offline — o usuário não perde o acesso.
+- O PWA detecta `?recuperar-pin=` e mostra a tela de redefinição de PIN sem login.
+- A troca do próprio PIN fica na tela **Acesso** (junto da troca de senha), com atalho “Esqueci meu PIN”.
 
 ## 3.7 Matriz de validação offline x servidor
 

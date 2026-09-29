@@ -195,7 +195,7 @@ Objetivo: simular uma falha do servidor e confirmar que as operações da fila *
   uma baixa no **Goldbox** pedindo confirmação com PIN → informe **PIN errado** → 403 "PIN
   inválido"; informe o **PIN certo** → ok. Sem PIN definido, esses campos aparecem vazios e a
   ação não exige PIN.
-- [ ] **Trocar o próprio PIN**: **Configurações → Meu PIN**, informe o PIN atual e o novo
+- [ ] **Trocar o próprio PIN**: tela **Acesso**, informe o PIN atual e o novo
   (4–6 dígitos) → confira que uma baixa passa a exigir o novo PIN.
 - [ ] **Admin redefine PIN**: na tela **Usuários**, no card de um mecânico use **Redefinir PIN** →
   informe um novo PIN → o usuário entra com o novo PIN nas confirmações.
@@ -207,6 +207,14 @@ Objetivo: simular uma falha do servidor e confirmar que as operações da fila *
   mesmo link → "inválido ou expirado".
 - [ ] **Sem vazamento**: pedir recuperação para um e-mail **não cadastrado** também retorna a
   mesma mensagem genérica.
+- [ ] **Recuperação de PIN** (e-mail, fase 22): faça logout e toque **Esqueci minha senha ou PIN**
+  → escolha **PIN de confirmação** → informe o e-mail → abra o link `?recuperar-pin=<token>` →
+  defina um novo PIN (4–6 dígitos) → entre: a **senha continua a mesma** e a sessão antiga **não**
+  foi derrubada; o novo PIN vale nas confirmações sensíveis. Reabrir o link → "inválido ou expirado".
+- [ ] **Fila de erros** (fase 22): com uma operação recusada pelo servidor, abra **Fila** no menu →
+  confira candidatos (entidade, tentativas, causa e "o que fazer") → **Reenviar esta** volta para
+  `PENDENTE` e o **Sincronizar agora** reenvia; **Descartar** remove a operação. O modal de sync
+  mostra a barra de **progresso 0–100** e o resumo final.
 - [ ] Marque as caixas do `docs/18` (adicione se necessário).
 
 > [NOTA] _________________________________________________________________

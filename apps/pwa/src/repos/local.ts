@@ -185,6 +185,35 @@ export async function marcarFalhaFila(operationId: string, erro: string, tentati
   });
 }
 
+/**
+ * Fase 22: devolve uma operação com erro para a fila pendente (o próximo
+ * "Sincronizar agora" tenta de novo) e limpa o contador de tentativas.
+ */
+export async function reativarOperacaoFila(operationId: string): Promise<void> {
+  const atual = await db.syncQueue.get(operationId);
+  if (!atual) return;
+  const agora = new Date().toISOString();
+  await db.syncQueue.put({
+    ...atual,
+    status: 'PENDENTE',
+    tentativas: 0,
+    erro: undefined,
+    proximaTentativaEm: agora,
+  });
+}
+
+/** Fase 22: operações que o servidor recusou (tela "Fila de sincronização"). */
+export async function listOperacoesComErro(depositoId?: string): Promise<SyncQueueRow[]> {
+  const todas = await db.syncQueue.where('status').equals('ERRO').toArray();
+  return todas
+    .filter((q) => {
+      if (!depositoId) return true;
+      const p = q.payload as { depositoId?: string } | null;
+      return p?.depositoId === depositoId;
+    })
+    .sort((a, b) => b.tentativas - a.tentativas || a.criadoEm.localeCompare(b.criadoEm));
+}
+
 export async function listMovimentosLocais(depositoId: string): Promise<GoldboxMovementRow[]> {
   const locais = await db.goldboxMovements.where('depositoId').equals(depositoId).sortBy('dataHora');
   return locais.reverse();

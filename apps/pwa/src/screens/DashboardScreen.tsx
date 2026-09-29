@@ -102,6 +102,11 @@ export function DashboardScreen() {
             <div className="list-sub">
               {STATUS_LABEL[est]} · última sync {tempoRelativo(ultimaSync)}
             </div>
+            {pendencias.errosFila > 0 && (
+              <div className="list-sub warn" style={{ marginTop: '0.2rem' }}>
+                {pendencias.errosFila} operação(ões) não puderam ser sincronizadas — toque em “Ver erros da fila”.
+              </div>
+            )}
           </div>
           {session.depositos.length > 1 && (
             <Btn variant="secondary" className="small" onClick={() => navigate('/depositos')}>
@@ -132,8 +137,18 @@ export function DashboardScreen() {
         </div>
         {pendencias.errosFila > 0 && (
           <div className="list-item">
-            <span className="list-title">Erros na fila de sincronização</span>
-            <span className="list-title warn">{pendencias.errosFila}</span>
+            <span>
+              <span className="list-title">Erros na fila de sincronização</span>
+              <span className="list-sub">
+                O servidor recusou estas operações. Reenvie depois de corrigir a causa ou descarte.
+              </span>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className="list-title warn">{pendencias.errosFila}</span>
+              <Btn variant="secondary" className="small" onClick={() => navigate('/fila')}>
+                Ver erros
+              </Btn>
+            </span>
           </div>
         )}
       </div>

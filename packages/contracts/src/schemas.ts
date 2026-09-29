@@ -62,6 +62,16 @@ export const resetPasswordBodySchema = z.object({
   novaSenha: z.string().min(8),
 });
 
+/** Fase 22: recuperação do próprio PIN por e-mail (link de uso único). */
+export const forgotPinBodySchema = z.object({
+  email: emailSchema,
+});
+
+export const resetPinBodySchema = z.object({
+  token: z.string().min(20).max(512),
+  novoPin: pinSchema,
+});
+
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------

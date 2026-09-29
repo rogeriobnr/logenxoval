@@ -29,6 +29,7 @@ export function LoginScreen() {
 
   // recuperação
   const [rEmail, setREmail] = useState('');
+  const [rTipo, setRTipo] = useState<'SENHA' | 'PIN'>('SENHA');
   const [recBusy, setRecBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -87,8 +88,13 @@ export function LoginScreen() {
     e.preventDefault();
     setRecBusy(true);
     try {
-      await api.request<{ ok: boolean }>('POST', '/auth/forgot-password', { email: rEmail.trim() });
-      toast.success('Se o e-mail estiver cadastrado, enviamos o link de recuperação. Verifique sua caixa de entrada (e o spam).');
+      if (rTipo === 'PIN') {
+        await api.request<{ ok: boolean }>('POST', '/auth/forgot-pin', { email: rEmail.trim() });
+        toast.success('Se o e-mail estiver cadastrado, enviamos o link para redefinir o PIN. Verifique também o spam.');
+      } else {
+        await api.request<{ ok: boolean }>('POST', '/auth/forgot-password', { email: rEmail.trim() });
+        toast.success('Se o e-mail estiver cadastrado, enviamos o link de recuperação. Verifique sua caixa de entrada (e o spam).');
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Falha ao solicitar recuperação.');
     }
@@ -149,7 +155,7 @@ export function LoginScreen() {
             </form>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.75rem' }}>
               <button type="button" className="link-btn" onClick={() => setAba('recuperar')}>
-                Esqueci minha senha
+                Esqueci minha senha ou PIN
               </button>
               <span className="muted">Autenticação offline limitada a este aparelho.</span>
             </div>
@@ -219,12 +225,22 @@ export function LoginScreen() {
         {aba === 'recuperar' && (
           <>
             <Alert kind="info">
-              Informe o e-mail cadastrado na sua conta. Enviamos um link de redefinição válido por 30 minutos.
+              Informe o e-mail cadastrado na sua conta. Escolha recuperar a <b>senha</b> de acesso ou o <b>PIN</b> de
+              confirmação — enviamos um link válido por 30 minutos.
             </Alert>
             <form onSubmit={recuperar}>
+              <SelectField
+                id="r-tipo"
+                label="O que você esqueceu?"
+                value={rTipo}
+                onChange={(e) => setRTipo(e.target.value as 'SENHA' | 'PIN')}
+              >
+                <option value="SENHA">Senha de acesso</option>
+                <option value="PIN">PIN de confirmação</option>
+              </SelectField>
               <Field id="r-email" label="E-mail" type="email" value={rEmail} onChange={(e) => setREmail(e.target.value)} required placeholder="maria@empresa.com" />
               <Btn type="submit" disabled={recBusy || !online}>
-                {recBusy ? 'Enviando…' : 'Enviar link de recuperação'}
+                {recBusy ? 'Enviando…' : rTipo === 'PIN' ? 'Enviar link para redefinir o PIN' : 'Enviar link de recuperação'}
               </Btn>
             </form>
             <button

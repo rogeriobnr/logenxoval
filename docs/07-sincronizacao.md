@@ -27,7 +27,7 @@
 * Verificando conflitos
 * Finalizando
 ```
-Exibe progresso, quantidade processada e erros.
+Exibe progresso, quantidade processada e erros. Na fase 22 o modal ganhou **barra de progresso 0–100** com listra animada e cada passo é anunciado por `onProgress` (`espelharDepositos`); ao concluir, mostra o resumo (depósitos, registros enviados, erros na fila).
 
 ## 7.4 Sem sinal
 

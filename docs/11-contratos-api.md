@@ -13,7 +13,9 @@ Todo request de estoque envia/valida `depositoId`. RLS no banco reforça o mesmo
 | POST | `/auth/login` | `{matricula, senha, deviceId}` → `{accessToken, refreshToken, user, saltLocal}` |
 | POST | `/auth/register` | sem token — cadastro público `{nome, sobrenome, matricula, email, senha, perfil (MECANICO/LIDER), pin}` → usuário `PENDENTE` |
 | POST | `/auth/forgot-password` | público — `{email}` → sempre 200; se o e-mail existe, envia link de recuperação |
-| POST | `/auth/reset-password` | público — `{token, novaSenha}` (token 1 uso, expira 30 min) |
+| POST | `/auth/reset-password` | público — `{token, novaSenha}` (token 1 uso, expira 30 min; revoga sessões) |
+| POST | `/auth/forgot-pin` | público — `{email}` → sempre 200; se o e-mail existe, envia link de recuperação do PIN |
+| POST | `/auth/reset-pin` | público — `{token, novoPin}` (token 1 uso, expira 30 min; não revoga sessões) |
 | POST | `/auth/change-pin` | `{pinAtual, novoPin}` — PIN do próprio usuário (`pinAtual` vazio permite criar o primeiro PIN) |
 | POST | `/auth/logout` | encerra sessão do device |
 | POST | `/auth/refresh` | `{refreshToken, deviceId}` → novo token |

@@ -46,7 +46,7 @@ Operações do contexto de um depósito: **sempre** o depósito ativo autorizado
 Regras de aplicação:
 
 1. **Toda operação crítica** valida matrícula digitada (equivalente a assinatura).
-2. **Operações críticas** exigem adicionalmente o **PIN do próprio usuário logado**, quando ele tiver PIN definido (`users.pin_hash`). Usuário sem PIN definido não precisa informar PIN; o admin pode criar/redefinir o PIN de qualquer usuário (e o próprio usuário, sempre que já tiver PIN, troca pelo dele — ver `Configurações → Meu PIN`).
+2. **Operações críticas** exigem adicionalmente o **PIN do próprio usuário logado**, quando ele tiver PIN definido (`users.pin_hash`). Usuário sem PIN definido não precisa informar PIN; o admin pode criar/redefinir o PIN de qualquer usuário (e o próprio usuário, sempre que já tiver PIN, troca pelo dele — ver tela `Acesso`, que também tem “Esqueci meu PIN”).
 3. Permissões conferidas **servidor** em toda rota; tabela local é só espelho para UX offline.
 4. Mecânico não pode estornar, criar depósito, publicar versão, restaurar, aprovar solicitações, ajustar/descartar peça avulsa, registrar entrada de estoque, nem listar/gerenciar usuários. Desde a fase 21, **qualquer usuário com acesso ao depósito** (mecânico incluído) cadastra, edita e exclui itens do catálogo de consumíveis/EPIs.
 5. **PIN nunca é exigido no fluxo de consumíveis/EPIs**: criar/editar/excluir item do catálogo, enviar solicitação e marcar recebimento exigem apenas a confirmação de matrícula — `APROVAR_SOLICITACAO` ficou fora de `ACTION_REQUIRES_PIN`.

@@ -47,7 +47,10 @@ export function Header() {
           </>
         )}
         <a href="#/senha" className={window.location.hash === '#/senha' ? 'active' : ''}>
-          Senha
+          Acesso
+        </a>
+        <a href="#/fila" className={window.location.hash === '#/fila' ? 'active' : ''}>
+          Fila
         </a>
         <a href="#/sair" className={window.location.hash === '#/sair' ? 'active' : ''}>
           Sair

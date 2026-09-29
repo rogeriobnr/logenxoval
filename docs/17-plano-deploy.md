@@ -37,7 +37,7 @@ A função recebe a URL original; o adaptador normaliza `req.url` (remove prefix
 Sem `GEMINI_API_KEY`, a rota `POST /ocr/ai` responde `501 IA_NAO_CONFIGURADA` e o PWA cai
 automaticamente para o reconhecimento local (Tesseract.js), com aviso no app.
 
-Sem `EMAIL_*` (SMTP não configurado), `POST /auth/forgot-password` continua respondendo 200 e o
+Sem `EMAIL_*` (SMTP não configurado), `POST /auth/forgot-password` e `POST /auth/forgot-pin` continuam respondendo 200 e o
 link de recuperação vai para o **log da função** (útil em dev); em produção, configurar `EMAIL_*`
 para entrega real ao e-mail do usuário.
 

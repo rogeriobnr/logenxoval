@@ -28,6 +28,7 @@
 
 - Chat: segredos via variável de ambiente (`DATABASE_URL`, `JWT_SECRET`, `GEMINI_API_KEY`, `EMAIL_HOST`/`EMAIL_USER`/`EMAIL_PASS`/`EMAIL_FROM`, `APP_URL`). Nunca no repositório.
 - Recuperação de senha: token aleatório sha256 em `password_resets` (1 uso, 30 min); resposta da rota sempre 200 para não revelar contas; sessões revogadas na troca de senha.
+- Recuperação de PIN: token aleatório sha256 em `pin_resets` (1 uso, 30 min); resposta sempre 200; troca só o PIN e **não** revoga sessões (o usuário mantém o acesso e o espelho offline).
 - `.env*` no .gitignore; `.env.example` documentado.
 - Dados sensíveis AES-GCM quando aplicável (ex.: senha não é armazenada, então hash é suficiente; observações/motivos sensíveis podem ser criptografados).
 - Criptografia no repouso do banco (responsabilidade do provedor, documentado).

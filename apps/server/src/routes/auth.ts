@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   loginBodySchema, logoutBodySchema, refreshBodySchema, changePasswordBodySchema, registerUserBodySchema,
   forgotPasswordBodySchema, resetPasswordBodySchema, changePinBodySchema,
+  forgotPinBodySchema, resetPinBodySchema,
 } from '@logenxoval/contracts';
 import { authenticate } from '../plugins/auth';
 import { validateBody } from '../lib/validator';
@@ -71,6 +72,27 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
       const body = req.body as typeof forgotPasswordBodySchema._type;
       await recoveryService.solicitarRecuperacao(body.email);
       return { ok: true, mensagem: 'Se o e-mail estiver cadastrado, enviamos o link de recuperação.' };
+    },
+  );
+
+  /** Fase 22: recuperação do próprio PIN — mesma mecânica da senha. */
+  app.post(
+    '/auth/forgot-pin',
+    { ...validateBody(forgotPinBodySchema) },
+    async (req) => {
+      const body = req.body as typeof forgotPinBodySchema._type;
+      await recoveryService.solicitarRecuperacaoPin(body.email);
+      return { ok: true, mensagem: 'Se o e-mail estiver cadastrado, enviamos o link de recuperação do PIN.' };
+    },
+  );
+
+  app.post(
+    '/auth/reset-pin',
+    { ...validateBody(resetPinBodySchema) },
+    async (req) => {
+      const body = req.body as typeof resetPinBodySchema._type;
+      await recoveryService.redefinirPinComToken(body.token, body.novoPin);
+      return { ok: true, mensagem: 'PIN redefinido. Use o novo PIN nas confirmações sensíveis.' };
     },
   );
 

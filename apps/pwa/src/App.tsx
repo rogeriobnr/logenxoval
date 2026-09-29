@@ -20,6 +20,7 @@ import { SolicitacoesScreen } from './screens/SolicitacoesScreen';
 import { ReportsScreen } from './screens/ReportsScreen';
 import { ChangePasswordScreen } from './screens/ChangePasswordScreen';
 import { ConfiguracoesScreen } from './screens/ConfiguracoesScreen';
+import { SyncQueueScreen } from './screens/SyncQueueScreen';
 import { Alert } from './components/ui';
 
 export function App() {
@@ -82,8 +83,11 @@ export function App() {
   }
 
   if (status === 'anon') {
-    const resetToken = new URLSearchParams(window.location.search).get('recuperar');
-    if (resetToken) return <ResetPasswordScreen token={resetToken} />;
+    const params = new URLSearchParams(window.location.search);
+    const resetToken = params.get('recuperar');
+    if (resetToken) return <ResetPasswordScreen token={resetToken} modo="senha" />;
+    const resetPinToken = params.get('recuperar-pin');
+    if (resetPinToken) return <ResetPasswordScreen token={resetPinToken} modo="pin" />;
     return <LoginScreen />;
   }
 
@@ -120,6 +124,8 @@ export function App() {
     content = <ReportsScreen />;
   } else if (route === '/senha') {
     content = <ChangePasswordScreen />;
+  } else if (route === '/fila') {
+    content = <SyncQueueScreen />;
   } else if (route === '/configuracoes') {
     content = <ConfiguracoesScreen />;
   } else {

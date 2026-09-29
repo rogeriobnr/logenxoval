@@ -34,38 +34,6 @@ export function ConfiguracoesScreen() {
   const [matricula, setMatricula] = useState(session?.matricula ?? '');
   const [pin, setPin] = useState('');
 
-  // Meu PIN
-  const [pinAtual, setPinAtual] = useState('');
-  const [novoPin, setNovoPin] = useState('');
-  const [novoPin2, setNovoPin2] = useState('');
-  const [pinBusy, setPinBusy] = useState(false);
-
-  async function alterarPin() {
-    if (!/^\d{4,6}$/.test(novoPin)) {
-      toast.error('O novo PIN deve ter de 4 a 6 dígitos.');
-      return;
-    }
-    if (novoPin !== novoPin2) {
-      toast.error('Os PINs não conferem.');
-      return;
-    }
-    setPinBusy(true);
-    try {
-      await api.request<{ ok: boolean }>('POST', '/auth/change-pin', {
-        pinAtual: pinAtual,
-        novoPin,
-      });
-      toast.success('PIN alterado. Ele passa a ser exigido nas confirmações sensíveis.');
-      setPinAtual('');
-      setNovoPin('');
-      setNovoPin2('');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Falha ao alterar o PIN.');
-    } finally {
-      setPinBusy(false);
-    }
-  }
-
   const carregarSnapshots = useCallback(async () => {
     if (!podeRestaurar || !depositoId || !online) return;
     try {
@@ -238,52 +206,6 @@ export function ConfiguracoesScreen() {
             </div>
           </div>
         )}
-      </div>
-
-      <div className="card" style={{ marginBottom: '1rem' }}>
-        <div className="list-item">
-          <div>
-            <div className="list-title">Meu PIN</div>
-            <div className="list-sub">
-              O PIN é exigido nas confirmações sensíveis (designações, restaurações, desbloqueio de depósito). Cadastre
-              ou troque o seu PIN aqui.
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-          <Field
-            id="pin-atual"
-            type="password"
-            inputMode="numeric"
-            label="PIN atual"
-            placeholder="Se ainda não tem PIN, deixe vazio"
-            value={pinAtual}
-            onChange={(e) => setPinAtual(e.target.value.replace(/\D/g, ''))}
-          />
-          <Field
-            id="pin-novo"
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            label="Novo PIN (4 a 6 dígitos)"
-            placeholder="••••"
-            value={novoPin}
-            onChange={(e) => setNovoPin(e.target.value.replace(/\D/g, ''))}
-          />
-          <Field
-            id="pin-novo2"
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            label="Confirmar novo PIN"
-            placeholder="••••"
-            value={novoPin2}
-            onChange={(e) => setNovoPin2(e.target.value.replace(/\D/g, ''))}
-          />
-        </div>
-        <Btn onClick={() => void alterarPin()} disabled={pinBusy}>
-          {pinBusy ? 'Salvando…' : 'Alterar meu PIN'}
-        </Btn>
       </div>
 
       <div className="card">

@@ -297,21 +297,40 @@ export async function espelharDivergencias(api: ApiClient, depositoId: string): 
  * Fase 02: espelha os depósitos autorizados no IndexedDB.
  * A sync completa (push+fila+conflitos) chega na fase 05.
  */
+export type SyncFase = 'CONEXAO' | 'DEPOSITOS' | 'BAIXAS' | 'DOCUMENTOS' | 'ESPELHO' | 'FINALIZANDO' | 'CONCLUIDA' | 'FALHA';
+
+export interface SyncProgresso {
+  fase: SyncFase;
+  /** 0 a 100. */
+  percentual: number;
+  mensagem: string;
+  deposito?: string;
+}
+
 export async function espelharDepositos(params: {
   api: ApiClient;
   deviceId: string;
   report?: (message: string) => void;
+  onProgress?: (p: SyncProgresso) => void;
 }): Promise<EspelhoResult> {
   const { api, deviceId } = params;
   const report = params.report ?? (() => undefined);
+  const onProgress = params.onProgress ?? (() => undefined);
 
-  report('Verificando conexão');
+  let passo = 0;
+  const ETAPAS = 4;
+  const emitir = (fase: SyncFase, mensagem: string, deposito?: string) => {
+    report(mensagem);
+    onProgress({ fase, percentual: Math.min(100, Math.round((passo / ETAPAS) * 100)), mensagem, deposito });
+  };
+
+  emitir('CONEXAO', 'Verificando conexão com o servidor');
   const res = await api.request<{ depositos: DepositoRow[] }>('GET', '/deposits');
+  passo = 1;
 
-  report(`Baixando ${res.depositos.length} depósito(s)`);
+  emitir('DEPOSITOS', `Recebendo ${res.depositos.length} depósito(s) autorizado(s)`);
   await upsertDepositos(res.depositos);
 
-  report('Removendo depósitos sem acesso');
   const locais = await listDepositosLocal();
   const ids = new Set(res.depositos.map((d) => d.id));
   for (const d of locais) {
@@ -320,9 +339,9 @@ export async function espelharDepositos(params: {
 
   let enviadas = 0;
   let errosFila = 0;
-  report(`Baixando o enxoval de ${res.depositos.length} depósito(s)`);
+
   for (const d of res.depositos) {
-    report(`Enviando baixas pendentes de ${d.numero}`);
+    emitir('BAIXAS', `Enviando baixas e registros pendentes de ${d.numero}`, d.numero);
     try {
       const flush = await enviarBaixasPendentes(api, deviceId, d.id, report);
       enviadas += flush.enviadas;
@@ -331,6 +350,9 @@ export async function espelharDepositos(params: {
       errosFila += (await listFila()).filter((q) => q.status === 'ERRO').length;
       report(`Falha ao enviar baixas de ${d.numero}: ${err instanceof Error ? err.message : 'erro'}`);
     }
+    passo += 1;
+
+    emitir('DOCUMENTOS', `Enviando documentos pendentes de ${d.numero}`, d.numero);
     try {
       const docs = await enviarDocumentosPendentes(api, d.id, report);
       enviadas += docs.enviadas;
@@ -338,6 +360,9 @@ export async function espelharDepositos(params: {
     } catch {
       // documento requer conexão — segue com a fila
     }
+    passo += 1;
+
+    emitir('ESPELHO', `Atualizando o espelho local de ${d.numero}`, d.numero);
     try {
       await espelharEnxoval(api, d.id);
       await espelharPecas(api, d.id);
@@ -347,15 +372,23 @@ export async function espelharDepositos(params: {
     } catch {
       // Depósito sem enxoval publicado ainda — segue sem itens locais.
     }
+    passo += 1;
   }
 
-  report('Verificando conflitos e registrando última sincronização');
+  emitir('FINALIZANDO', 'Registrando a última sincronização');
   const lastSyncAt = new Date().toISOString();
   for (const d of res.depositos) {
     await setSyncState(deviceId, d.id, { lastSyncAt, status: 'SINCRONIZADO' });
   }
 
-  report('Finalizando');
   emitSync();
+  const extras = [enviadas ? `${enviadas} registro(s) enviado(s)` : null, errosFila ? `${errosFila} erro(s) na fila` : null]
+    .filter(Boolean)
+    .join(' · ');
+  onProgress({
+    fase: 'CONCLUIDA',
+    percentual: 100,
+    mensagem: `Sincronização concluída — ${res.depositos.length} depósito(s).${extras ? ` ${extras}.` : ''}`,
+  });
   return { sincronizados: res.depositos.length, lastSyncAt, enviadas, errosFila };
 }

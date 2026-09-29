@@ -49,6 +49,12 @@ id, userId (ref users), tokenHash (sha256 do token), expiraEm, criadoEm, usadoEm
 ```
 Token de uso único para recuperação de senha (validade 30 min).
 
+### pin_resets
+```
+id, userId (ref users), tokenHash (sha256 do token), expiraEm, criadoEm, usadoEm
+```
+Token de uso único para recuperação do PIN por e-mail (validade 30 min, fase 22). Mesmo desenho de `password_resets`, mas não revoga sessões.
+
 ### sessions
 ```
 id, userId, deviceId, tokenHash, criadoEm, expiresAt, lastActivityAt

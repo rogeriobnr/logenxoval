@@ -186,6 +186,8 @@ matrícula. O envio cria a solicitação já `ENVIADA`.
 
 ## 10.9 Sync modal
 
+> Fase 22: o modal mostra uma **barra de progresso 0–100** com listra animada enquanto sincroniza, os passos descritos (conexão → depósitos → baixas → documentos → espelho → finalizar) e um resumo ao concluir. Falhas vão para a tela **Fila** (ver 10.11).
+
 ```
 ┌─────── Sincronizar agora ───────┐
 │ ● Verificando conexão           │
@@ -216,3 +218,25 @@ matrícula. O envio cria a solicitação já `ENVIADA`.
 ```
 
 Especificação visual resumida: botões ≥ 48px, alto contraste (fundo claro/escuro de alto contraste), feedback por cores (✔ verde, ⚠ amarelo, ✖ vermelho, 𝘪 novo azul), fontes ≥ 16px em campos de contagem, header fixo com usuário/matrícula/depósito/status.
+
+---
+
+## 10.11 Fila de sincronização (erros)
+
+Tela `#/fila` (fase 22). Lista as operações que o servidor recusou (`status = ERRO`), com descrição, tentativas, o erro e **o que fazer**. Ações: “Reenviar esta”, “Descartar”, “Reenviar todas”, “Descartar todas” e “Sincronizar agora”.
+
+```
+┌─────── Fila de sincronização ───────┐
+│ 2 operação(ões) recusada(s)          │
+│ [⟳ Sincronizar agora]               │
+│ [Reenviar todas] [Descartar todas]  │
+├─────────────────────────────────────┤
+│ Baixa de Goldbox        erro         │
+│ A1 · 3 un. · 2 tentativa(s)          │
+│ Saldo insuficiente no servidor       │
+│ O que fazer: registre a entrada...   │
+│ [Reenviar] [Descartar] [Ver dados]   │
+└─────────────────────────────────────┘
+```
+
+O Dashboard mostra a contagem e um atalho “Ver erros” para esta tela.
